@@ -1,14 +1,27 @@
-const users = [
-  { name: 'Ava Wilson', role: 'Admin', status: 'Active', lastSeen: '2 hours ago' },
-  { name: 'Noah Carter', role: 'Manager', status: 'Active', lastSeen: 'Today' },
-  { name: 'Mia Green', role: 'Support', status: 'Invited', lastSeen: 'Yesterday' },
-  { name: 'Liam Hart', role: 'Analyst', status: 'Suspended', lastSeen: '3 days ago' },
-  { name: 'Emma Stone', role: 'Finance', status: 'Active', lastSeen: '5 minutes ago' },
-]
+import { useEffect, useState } from 'react'
+import { fetchUsers } from '../api/mock'
 
 function Users() {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    fetchUsers().then((data) => {
+      if (!active) return
+      setUsers(data)
+      setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
   return (
     <section className="users">
+      <p className="page-description">
+        User data is loaded from a mock API layer to simulate server requests.
+      </p>
       <div className="card filter-card">
         <div>
           <div className="card-title">User directory</div>
@@ -28,6 +41,14 @@ function Users() {
             <span>Status</span>
             <span>Last seen</span>
           </div>
+          {loading ? (
+            <div className="table-row">
+              <span>Loading...</span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          ) : null}
           {users.map((user) => (
             <div key={user.name} className="table-row">
               <span className="strong">{user.name}</span>

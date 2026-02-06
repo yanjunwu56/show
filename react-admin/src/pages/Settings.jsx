@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 
 function Settings() {
+  const { user } = useAuth()
   const [form, setForm] = useState({
     company: 'Northwind',
     timezone: 'UTC+8',
@@ -21,6 +23,10 @@ function Settings() {
         <div className="card-subtitle">
           Update preferences that apply to all teams.
         </div>
+        <p className="page-description">
+          This page is protected by role-based access (admin only).
+        </p>
+        <div className="role-pill">Current role: {user?.role || 'unknown'}</div>
 
         <div className="form-grid">
           <label className="field">

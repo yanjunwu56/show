@@ -1,32 +1,96 @@
-const stats = [
-  { label: 'Active users', value: '1,248', change: '+12%' },
-  { label: 'New orders', value: '320', change: '+8%' },
-  { label: 'Tickets', value: '18', change: '-4%' },
-  { label: 'Conversion', value: '4.6%', change: '+0.8%' },
-]
+import { useEffect, useRef, useState } from 'react'
+import * as echarts from 'echarts'
+import { fetchDashboardData } from '../api/mock'
 
-const tasks = [
-  { title: 'Review new merchant requests', owner: 'Cindy', due: 'Today' },
-  { title: 'Approve refund batch', owner: 'Leo', due: 'Tomorrow' },
-  { title: 'Check inventory alerts', owner: 'Mia', due: 'This week' },
-]
-
-const activities = [
-  { title: 'Payment confirmed for order #3841', time: '2 min ago' },
-  { title: 'New user registered: Omar K.', time: '18 min ago' },
-  { title: 'Server autoscaling completed', time: '1 hour ago' },
-]
-
-const orders = [
-  { id: 'ORD-3841', customer: 'Ava Wilson', total: '$1,240', status: 'Paid' },
-  { id: 'ORD-3842', customer: 'Noah Carter', total: '$980', status: 'Pending' },
-  { id: 'ORD-3843', customer: 'Liam Hart', total: '$320', status: 'Refund' },
-  { id: 'ORD-3844', customer: 'Emma Stone', total: '$540', status: 'Paid' },
-]
+const buildChart = (chart) => ({
+  tooltip: { trigger: 'axis' },
+  legend: { data: ['Revenue', 'Orders'] },
+  grid: { left: 8, right: 16, bottom: 8, top: 32, containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: chart.categories,
+    axisLine: { lineStyle: { color: '#cbd5f5' } },
+    axisTick: { show: false },
+  },
+  yAxis: {
+    type: 'value',
+    axisLine: { show: false },
+    splitLine: { lineStyle: { color: '#e2e8f0' } },
+  },
+  series: [
+    {
+      name: 'Revenue',
+      type: 'line',
+      smooth: true,
+      data: chart.revenue,
+      color: '#38bdf8',
+    },
+    {
+      name: 'Orders',
+      type: 'bar',
+      data: chart.orders,
+      color: '#0f172a',
+      barMaxWidth: 24,
+    },
+  ],
+})
 
 function Dashboard() {
+  const [stats, setStats] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [activities, setActivities] = useState([])
+  const [orders, setOrders] = useState([])
+  const [chartData, setChartData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const chartRef = useRef(null)
+  const chartInstanceRef = useRef(null)
+
+  useEffect(() => {
+    let active = true
+    fetchDashboardData().then((data) => {
+      if (!active) return
+      setStats(data.stats)
+      setTasks(data.tasks)
+      setActivities(data.activities)
+      setOrders(data.orders)
+      setChartData(data.chart)
+      setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!chartData || !chartRef.current) return
+    if (!chartInstanceRef.current) {
+      chartInstanceRef.current = echarts.init(chartRef.current)
+    }
+    chartInstanceRef.current.setOption(buildChart(chartData))
+  }, [chartData])
+
+  useEffect(() => {
+    const handleResize = () => chartInstanceRef.current?.resize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.dispose()
+        chartInstanceRef.current = null
+      }
+    },
+    [],
+  )
+
   return (
     <section className="dashboard">
+      <p className="page-description">
+        This dashboard loads mock data and renders a simple ECharts summary to
+        showcase reporting widgets.
+      </p>
       <div className="stats-grid">
         {stats.map((stat) => (
           <div key={stat.label} className="card stat-card">
@@ -35,6 +99,18 @@ function Dashboard() {
             <div className="stat-change">{stat.change}</div>
           </div>
         ))}
+      </div>
+
+      <div className="card chart-card">
+        <div className="card-title">Weekly revenue trend</div>
+        <div className="card-subtitle">
+          Combined line and bar chart rendered with ECharts.
+        </div>
+        {loading ? (
+          <div className="loading">Loading chart...</div>
+        ) : (
+          <div ref={chartRef} className="chart-container"></div>
+        )}
       </div>
 
       <div className="grid-2">
@@ -73,6 +149,14 @@ function Dashboard() {
             <span>Total</span>
             <span>Status</span>
           </div>
+          {loading ? (
+            <div className="table-row">
+              <span>Loading...</span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          ) : null}
           {orders.map((order) => (
             <div key={order.id} className="table-row">
               <span>{order.id}</span>
