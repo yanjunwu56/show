@@ -1,15 +1,21 @@
 <script setup>
-const users = [
-  { name: 'Ava Wilson', role: 'Admin', status: 'Active', lastSeen: '2 hours ago' },
-  { name: 'Noah Carter', role: 'Manager', status: 'Active', lastSeen: 'Today' },
-  { name: 'Mia Green', role: 'Support', status: 'Invited', lastSeen: 'Yesterday' },
-  { name: 'Liam Hart', role: 'Analyst', status: 'Suspended', lastSeen: '3 days ago' },
-  { name: 'Emma Stone', role: 'Finance', status: 'Active', lastSeen: '5 minutes ago' }
-]
+import { onMounted, ref } from 'vue'
+import { fetchUsers } from '../api/mock'
+
+const users = ref([])
+const loading = ref(true)
+
+onMounted(async () => {
+  users.value = await fetchUsers()
+  loading.value = false
+})
 </script>
 
 <template>
   <section class="users">
+    <p class="page-description">
+      User data is loaded from a mock API layer to simulate server requests.
+    </p>
     <div class="card filter-card">
       <div>
         <div class="card-title">User directory</div>
@@ -28,6 +34,12 @@ const users = [
           <span>Role</span>
           <span>Status</span>
           <span>Last seen</span>
+        </div>
+        <div v-if="loading" class="table-row">
+          <span>Loading...</span>
+          <span></span>
+          <span></span>
+          <span></span>
         </div>
         <div v-for="user in users" :key="user.name" class="table-row">
           <span class="strong">{{ user.name }}</span>

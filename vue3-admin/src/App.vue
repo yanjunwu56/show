@@ -1,7 +1,9 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { getUser, logout } from './services/auth'
 
+const router = useRouter()
 const route = useRoute()
 const menuItems = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -10,10 +12,23 @@ const menuItems = [
 ]
 
 const currentTitle = computed(() => route.meta?.title ?? 'Dashboard')
+const isAuthLayout = computed(() => route.meta?.layout === 'auth')
+const currentUser = computed(() => {
+  route.fullPath
+  return getUser()
+})
+
+const handleLogout = () => {
+  logout()
+  router.push('/login')
+}
 </script>
 
 <template>
-  <div class="app-shell">
+  <div v-if="isAuthLayout" class="auth-layout">
+    <RouterView />
+  </div>
+  <div v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-badge">VA</div>
@@ -47,7 +62,12 @@ const currentTitle = computed(() => route.meta?.title ?? 'Dashboard')
         </div>
         <div class="topbar-actions">
           <button class="ghost-button">New report</button>
-          <div class="avatar">YA</div>
+          <div v-if="currentUser" class="user-pill">
+            {{ currentUser.name }} · {{ currentUser.role }}
+          </div>
+          <button class="secondary-button" @click="handleLogout">
+            Log out
+          </button>
         </div>
       </header>
       <main class="content">

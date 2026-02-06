@@ -1,39 +1,102 @@
 <script setup>
-const stats = [
-  { label: 'Active users', value: '1,248', change: '+12%' },
-  { label: 'New orders', value: '320', change: '+8%' },
-  { label: 'Tickets', value: '18', change: '-4%' },
-  { label: 'Conversion', value: '4.6%', change: '+0.8%' }
-]
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import * as echarts from 'echarts'
+import { fetchDashboardData } from '../api/mock'
 
-const tasks = [
-  { title: 'Review new merchant requests', owner: 'Cindy', due: 'Today' },
-  { title: 'Approve refund batch', owner: 'Leo', due: 'Tomorrow' },
-  { title: 'Check inventory alerts', owner: 'Mia', due: 'This week' }
-]
+const stats = ref([])
+const tasks = ref([])
+const activities = ref([])
+const orders = ref([])
+const chartRef = ref(null)
+const loading = ref(true)
+let chartInstance = null
+const handleResize = () => {
+  if (chartInstance) {
+    chartInstance.resize()
+  }
+}
 
-const activities = [
-  { title: 'Payment confirmed for order #3841', time: '2 min ago' },
-  { title: 'New user registered: Omar K.', time: '18 min ago' },
-  { title: 'Server autoscaling completed', time: '1 hour ago' }
-]
+const buildChart = (chart) => ({
+  tooltip: { trigger: 'axis' },
+  legend: { data: ['Revenue', 'Orders'] },
+  grid: { left: 8, right: 16, bottom: 8, top: 32, containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: chart.categories,
+    axisLine: { lineStyle: { color: '#cbd5f5' } },
+    axisTick: { show: false }
+  },
+  yAxis: {
+    type: 'value',
+    axisLine: { show: false },
+    splitLine: { lineStyle: { color: '#e2e8f0' } }
+  },
+  series: [
+    {
+      name: 'Revenue',
+      type: 'line',
+      smooth: true,
+      data: chart.revenue,
+      color: '#38bdf8'
+    },
+    {
+      name: 'Orders',
+      type: 'bar',
+      data: chart.orders,
+      color: '#0f172a',
+      barMaxWidth: 24
+    }
+  ]
+})
 
-const orders = [
-  { id: 'ORD-3841', customer: 'Ava Wilson', total: '$1,240', status: 'Paid' },
-  { id: 'ORD-3842', customer: 'Noah Carter', total: '$980', status: 'Pending' },
-  { id: 'ORD-3843', customer: 'Liam Hart', total: '$320', status: 'Refund' },
-  { id: 'ORD-3844', customer: 'Emma Stone', total: '$540', status: 'Paid' }
-]
+const initChart = (chart) => {
+  if (!chartRef.value) return
+  chartInstance = echarts.init(chartRef.value)
+  chartInstance.setOption(buildChart(chart))
+}
+
+onMounted(async () => {
+  const data = await fetchDashboardData()
+  stats.value = data.stats
+  tasks.value = data.tasks
+  activities.value = data.activities
+  orders.value = data.orders
+  loading.value = false
+  await nextTick()
+  initChart(data.chart)
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+})
 </script>
 
 <template>
   <section class="dashboard">
+    <p class="page-description">
+      This dashboard loads mock data and renders a simple ECharts summary to
+      showcase reporting widgets.
+    </p>
     <div class="stats-grid">
       <div v-for="stat in stats" :key="stat.label" class="card stat-card">
         <div class="stat-label">{{ stat.label }}</div>
         <div class="stat-value">{{ stat.value }}</div>
         <div class="stat-change">{{ stat.change }}</div>
       </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="card-title">Weekly revenue trend</div>
+      <div class="card-subtitle">
+        Combined line and bar chart rendered with ECharts.
+      </div>
+      <div v-if="loading" class="loading">Loading chart...</div>
+      <div v-else ref="chartRef" class="chart-container"></div>
     </div>
 
     <div class="grid-2">

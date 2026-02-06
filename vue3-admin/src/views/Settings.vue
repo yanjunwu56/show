@@ -1,5 +1,6 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { getUser } from '../services/auth'
 
 const form = ref({
   company: 'Northwind',
@@ -7,6 +8,8 @@ const form = ref({
   notify: 'email',
   maintenance: false
 })
+
+const user = computed(() => getUser())
 </script>
 
 <template>
@@ -16,6 +19,10 @@ const form = ref({
       <div class="card-subtitle">
         Update preferences that apply to all teams.
       </div>
+      <p class="page-description">
+        This page is protected by role-based access (admin only).
+      </p>
+      <div class="role-pill">Current role: {{ user?.role || 'unknown' }}</div>
 
       <div class="form-grid">
         <label class="field">
