@@ -1,15 +1,20 @@
 import { createContext, useContext, useMemo, useState } from 'react'
-import { getUser, login as loginService, logout as logoutService } from './auth'
+import {
+  ensureSession,
+  getUser,
+  login as loginService,
+  logout as logoutService,
+} from './auth'
 
 const AuthContext = createContext(null)
 
 function AuthProvider({ children }) {
-  const [user, setUser] = useState(getUser())
+  const [user, setUser] = useState(() => (ensureSession() ? getUser() : null))
 
   const login = async (username, password) => {
     const loggedIn = await loginService(username, password)
-    setUser(loggedIn)
-    return loggedIn
+    setUser(loggedIn.user)
+    return loggedIn.user
   }
 
   const logout = () => {

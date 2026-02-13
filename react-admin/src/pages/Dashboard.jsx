@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
-import { fetchDashboardData } from '../api/mock'
+import { fetchDashboard } from '../api'
 
 const buildChart = (chart) => ({
   tooltip: { trigger: 'axis' },
@@ -36,6 +36,7 @@ const buildChart = (chart) => ({
 })
 
 function Dashboard() {
+  const orderGridStyle = { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }
   const [stats, setStats] = useState([])
   const [tasks, setTasks] = useState([])
   const [activities, setActivities] = useState([])
@@ -47,7 +48,7 @@ function Dashboard() {
 
   useEffect(() => {
     let active = true
-    fetchDashboardData().then((data) => {
+    fetchDashboard().then((data) => {
       if (!active) return
       setStats(data.stats)
       setTasks(data.tasks)
@@ -88,8 +89,8 @@ function Dashboard() {
   return (
     <section className="dashboard">
       <p className="page-description">
-        This dashboard loads mock data and renders a simple ECharts summary to
-        showcase reporting widgets.
+        This dashboard loads mock data and renders an ECharts summary. Use the
+        sidebar star icons to build shortcuts, and follow breadcrumbs above.
       </p>
       <div className="stats-grid">
         {stats.map((stat) => (
@@ -143,14 +144,14 @@ function Dashboard() {
       <div className="card table-card">
         <div className="card-title">Latest orders</div>
         <div className="table">
-          <div className="table-head">
+          <div className="table-head" style={orderGridStyle}>
             <span>Order</span>
             <span>Customer</span>
             <span>Total</span>
             <span>Status</span>
           </div>
           {loading ? (
-            <div className="table-row">
+            <div className="table-row" style={orderGridStyle}>
               <span>Loading...</span>
               <span></span>
               <span></span>
@@ -158,7 +159,7 @@ function Dashboard() {
             </div>
           ) : null}
           {orders.map((order) => (
-            <div key={order.id} className="table-row">
+            <div key={order.id} className="table-row" style={orderGridStyle}>
               <span>{order.id}</span>
               <span>{order.customer}</span>
               <span>{order.total}</span>

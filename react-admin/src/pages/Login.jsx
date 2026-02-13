@@ -37,8 +37,8 @@ function Login() {
         <div className="card login-card">
           <div className="card-title">Sign in</div>
           <p className="page-description">
-            This login page enables permission control. Use a demo account to see
-            role-based access in action.
+            This login page enables permission control. Session tokens persist
+            and refresh automatically for protected requests.
           </p>
           <form className="login-form" onSubmit={handleSubmit}>
             <label className="field">

@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import { fetchUsers } from '../api/mock'
+import DataTable from '../components/DataTable.jsx'
+import { fetchUsers } from '../api'
 
 function Users() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
+  const columns = [
+    { key: 'name', label: 'Name', sortable: true },
+    { key: 'email', label: 'Email', sortable: true },
+    { key: 'role', label: 'Role', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'lastSeen', label: 'Last seen', sortable: true },
+  ]
 
   useEffect(() => {
     let active = true
@@ -34,32 +42,12 @@ function Users() {
       </div>
 
       <div className="card table-card">
-        <div className="table">
-          <div className="table-head">
-            <span>Name</span>
-            <span>Role</span>
-            <span>Status</span>
-            <span>Last seen</span>
-          </div>
-          {loading ? (
-            <div className="table-row">
-              <span>Loading...</span>
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          ) : null}
-          {users.map((user) => (
-            <div key={user.name} className="table-row">
-              <span className="strong">{user.name}</span>
-              <span>{user.role}</span>
-              <span className={`tag tag-${user.status.toLowerCase()}`}>
-                {user.status}
-              </span>
-              <span>{user.lastSeen}</span>
-            </div>
-          ))}
-        </div>
+        <p className="page-description">
+          The table below supports pagination, sorting, filtering, and column
+          toggles.
+        </p>
+        {loading ? <div className="loading">Loading users...</div> : null}
+        {loading ? null : <DataTable rows={users} columns={columns} />}
       </div>
     </section>
   )
