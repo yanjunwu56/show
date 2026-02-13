@@ -12,27 +12,32 @@ const routes = [
   {
     path: '/login',
     component: Login,
-    meta: { title: 'Login', public: true, layout: 'auth' }
+    meta: {
+      title: 'Login',
+      titleKey: 'login',
+      public: true,
+      layout: 'auth'
+    }
   },
   {
     path: '/forbidden',
     component: Forbidden,
-    meta: { title: 'Access denied', requiresAuth: true }
+    meta: { title: 'Access denied', titleKey: 'forbidden', requiresAuth: true }
   },
   {
     path: '/dashboard',
     component: Dashboard,
-    meta: { title: 'Dashboard', requiresAuth: true }
+    meta: { title: 'Dashboard', titleKey: 'dashboard', requiresAuth: true }
   },
   {
     path: '/users',
     component: Users,
-    meta: { title: 'Users', requiresAuth: true }
+    meta: { title: 'Users', titleKey: 'users', requiresAuth: true }
   },
   {
     path: '/settings',
     component: Settings,
-    meta: { title: 'Settings', requiresAuth: true, roles: ['admin'] }
+    meta: { title: 'Settings', titleKey: 'settings', requiresAuth: true, roles: ['admin'] }
   },
   {
     path: '/:pathMatch(.*)*',

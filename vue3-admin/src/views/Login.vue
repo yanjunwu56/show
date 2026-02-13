@@ -35,8 +35,8 @@ const fillDemo = (account) => {
     <div class="card login-card">
       <div class="card-title">Sign in</div>
       <p class="page-description">
-        This login page enables permission control. Use a demo account to see
-        role-based access in action.
+        This login page enables permission control. Session tokens persist and
+        refresh automatically for protected requests.
       </p>
       <form class="login-form" @submit.prevent="submit">
         <label class="field">

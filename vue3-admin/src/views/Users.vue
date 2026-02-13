@@ -1,9 +1,17 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { fetchUsers } from '../api/mock'
+import DataTable from '../components/DataTable.vue'
+import { fetchUsers } from '../api'
 
 const users = ref([])
 const loading = ref(true)
+const columns = [
+  { key: 'name', label: 'Name', sortable: true },
+  { key: 'email', label: 'Email', sortable: true },
+  { key: 'role', label: 'Role', sortable: true },
+  { key: 'status', label: 'Status', sortable: true },
+  { key: 'lastSeen', label: 'Last seen', sortable: true }
+]
 
 onMounted(async () => {
   users.value = await fetchUsers()
@@ -28,28 +36,12 @@ onMounted(async () => {
     </div>
 
     <div class="card table-card">
-      <div class="table">
-        <div class="table-head">
-          <span>Name</span>
-          <span>Role</span>
-          <span>Status</span>
-          <span>Last seen</span>
-        </div>
-        <div v-if="loading" class="table-row">
-          <span>Loading...</span>
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <div v-for="user in users" :key="user.name" class="table-row">
-          <span class="strong">{{ user.name }}</span>
-          <span>{{ user.role }}</span>
-          <span class="tag" :class="`tag-${user.status.toLowerCase()}`">
-            {{ user.status }}
-          </span>
-          <span>{{ user.lastSeen }}</span>
-        </div>
-      </div>
+      <p class="page-description">
+        The table below supports pagination, sorting, filtering, and column
+        toggles.
+      </p>
+      <div v-if="loading" class="loading">Loading users...</div>
+      <DataTable v-else :rows="users" :columns="columns" />
     </div>
   </section>
 </template>

@@ -1,7 +1,7 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as echarts from 'echarts'
-import { fetchDashboardData } from '../api/mock'
+import { fetchDashboard } from '../api'
 
 const stats = ref([])
 const tasks = ref([])
@@ -9,6 +9,7 @@ const activities = ref([])
 const orders = ref([])
 const chartRef = ref(null)
 const loading = ref(true)
+const orderGridStyle = { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }
 let chartInstance = null
 const handleResize = () => {
   if (chartInstance) {
@@ -56,7 +57,7 @@ const initChart = (chart) => {
 }
 
 onMounted(async () => {
-  const data = await fetchDashboardData()
+  const data = await fetchDashboard()
   stats.value = data.stats
   tasks.value = data.tasks
   activities.value = data.activities
@@ -79,8 +80,8 @@ onBeforeUnmount(() => {
 <template>
   <section class="dashboard">
     <p class="page-description">
-      This dashboard loads mock data and renders a simple ECharts summary to
-      showcase reporting widgets.
+      This dashboard loads mock data and renders an ECharts summary. Use the
+      sidebar star icons to build shortcuts, and follow breadcrumbs above.
     </p>
     <div class="stats-grid">
       <div v-for="stat in stats" :key="stat.label" class="card stat-card">
@@ -125,13 +126,18 @@ onBeforeUnmount(() => {
     <div class="card table-card">
       <div class="card-title">Latest orders</div>
       <div class="table">
-        <div class="table-head">
+        <div class="table-head" :style="orderGridStyle">
           <span>Order</span>
           <span>Customer</span>
           <span>Total</span>
           <span>Status</span>
         </div>
-        <div v-for="order in orders" :key="order.id" class="table-row">
+        <div
+          v-for="order in orders"
+          :key="order.id"
+          class="table-row"
+          :style="orderGridStyle"
+        >
           <span>{{ order.id }}</span>
           <span>{{ order.customer }}</span>
           <span>{{ order.total }}</span>

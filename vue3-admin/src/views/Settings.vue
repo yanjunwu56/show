@@ -20,7 +20,8 @@ const user = computed(() => getUser())
         Update preferences that apply to all teams.
       </div>
       <p class="page-description">
-        This page is protected by role-based access (admin only).
+        This page is protected by role-based access (admin only). Theme and
+        language can be switched from the top bar.
       </p>
       <div class="role-pill">Current role: {{ user?.role || 'unknown' }}</div>
 
