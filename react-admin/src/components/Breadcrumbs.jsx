@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/I18nProvider'
 const breadcrumbMap = {
   '/dashboard': 'dashboard',
   '/users': 'users',
+  '/hooks': 'hooks',
   '/settings': 'settings',
   '/forbidden': 'forbidden',
 }

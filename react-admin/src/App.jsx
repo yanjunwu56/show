@@ -11,7 +11,11 @@ import {
 import { useAuth } from './auth/AuthProvider'
 import RequireAuth from './auth/RequireAuth'
 import RequireRole from './auth/RequireRole'
-import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from './api'
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from './api'
 import { pushNotification } from './api/handlers'
 import Breadcrumbs from './components/Breadcrumbs.jsx'
 import NotificationPanel from './components/NotificationPanel.jsx'
@@ -21,6 +25,7 @@ import { getTheme, toggleTheme } from './theme/theme'
 import { connect, disconnect, onMessage } from './websocket/socket'
 import Dashboard from './pages/Dashboard.jsx'
 import Forbidden from './pages/Forbidden.jsx'
+import Hooks from './pages/Hooks.jsx'
 import Login from './pages/Login.jsx'
 import Users from './pages/Users.jsx'
 import Settings from './pages/Settings.jsx'
@@ -29,6 +34,7 @@ import NotFound from './pages/NotFound.jsx'
 const titleMap = {
   '/dashboard': 'dashboard',
   '/users': 'users',
+  '/hooks': 'hooks',
   '/settings': 'settings',
   '/forbidden': 'forbidden',
 }
@@ -39,6 +45,7 @@ function AppLayout({ user, onLogout }) {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', key: 'dashboard' },
     { to: '/users', label: 'Users', key: 'users' },
+    { to: '/hooks', label: 'Hooks', key: 'hooks' },
     { to: '/settings', label: 'Settings', key: 'settings' },
   ]
   const [shortcuts, setShortcuts] = useState(() => getShortcuts())
@@ -214,6 +221,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="users" element={<Users />} />
+          <Route path="hooks" element={<Hooks />} />
           <Route
             path="settings"
             element={
