@@ -20,6 +20,7 @@ const route = useRoute()
 const menuItems = [
   { to: '/dashboard', label: 'Dashboard', key: 'dashboard' },
   { to: '/users', label: 'Users', key: 'users' },
+  { to: '/hooks', label: 'Hooks', key: 'hooks' },
   { to: '/settings', label: 'Settings', key: 'settings' }
 ]
 

@@ -3,6 +3,7 @@ import { hasRole, isAuthenticated } from '../services/auth'
 import Dashboard from '../views/Dashboard.vue'
 import Forbidden from '../views/Forbidden.vue'
 import Login from '../views/Login.vue'
+import Hooks from '../views/Hooks.vue'
 import Users from '../views/Users.vue'
 import Settings from '../views/Settings.vue'
 import NotFound from '../views/NotFound.vue'
@@ -33,6 +34,11 @@ const routes = [
     path: '/users',
     component: Users,
     meta: { title: 'Users', titleKey: 'users', requiresAuth: true }
+  },
+  {
+    path: '/hooks',
+    component: Hooks,
+    meta: { title: 'Hooks', titleKey: 'hooks', requiresAuth: true }
   },
   {
     path: '/settings',
