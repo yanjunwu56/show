@@ -1,12 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { hasRole, isAuthenticated } from '../services/auth'
-import Dashboard from '../views/Dashboard.vue'
-import Forbidden from '../views/Forbidden.vue'
-import Login from '../views/Login.vue'
-import Hooks from '../views/Hooks.vue'
-import Users from '../views/Users.vue'
-import Settings from '../views/Settings.vue'
-import NotFound from '../views/NotFound.vue'
+const Dashboard = () => import('../views/Dashboard.vue')
+const Forbidden = () => import('../views/Forbidden.vue')
+const Login = () => import('../views/Login.vue')
+const Hooks = () => import('../views/Hooks.vue')
+const Users = () => import('../views/Users.vue')
+const Settings = () => import('../views/Settings.vue')
+const NotFound = () => import('../views/NotFound.vue')
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
@@ -28,17 +28,32 @@ const routes = [
   {
     path: '/dashboard',
     component: Dashboard,
-    meta: { title: 'Dashboard', titleKey: 'dashboard', requiresAuth: true }
+    meta: {
+      title: 'Dashboard',
+      titleKey: 'dashboard',
+      requiresAuth: true,
+      keepAlive: true
+    }
   },
   {
     path: '/users',
     component: Users,
-    meta: { title: 'Users', titleKey: 'users', requiresAuth: true }
+    meta: {
+      title: 'Users',
+      titleKey: 'users',
+      requiresAuth: true,
+      keepAlive: true
+    }
   },
   {
     path: '/hooks',
     component: Hooks,
-    meta: { title: 'Hooks', titleKey: 'hooks', requiresAuth: true }
+    meta: {
+      title: 'Hooks',
+      titleKey: 'hooks',
+      requiresAuth: true,
+      keepAlive: true
+    }
   },
   {
     path: '/settings',

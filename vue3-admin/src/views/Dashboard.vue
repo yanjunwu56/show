@@ -1,7 +1,11 @@
 <script setup>
+defineOptions({ name: 'Dashboard' })
+
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as echarts from 'echarts'
 import { fetchDashboard } from '../api'
+import { useEventListener } from '../hooks/useEventListener'
+import { useThrottle } from '../hooks/useThrottle'
 
 const stats = ref([])
 const tasks = ref([])
@@ -11,11 +15,9 @@ const chartRef = ref(null)
 const loading = ref(true)
 const orderGridStyle = { gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }
 let chartInstance = null
-const handleResize = () => {
-  if (chartInstance) {
-    chartInstance.resize()
-  }
-}
+const handleResize = useThrottle(() => {
+  if (chartInstance) chartInstance.resize()
+}, 200)
 
 const buildChart = (chart) => ({
   tooltip: { trigger: 'axis' },
@@ -65,11 +67,11 @@ onMounted(async () => {
   loading.value = false
   await nextTick()
   initChart(data.chart)
-  window.addEventListener('resize', handleResize)
 })
 
+useEventListener(window, 'resize', handleResize)
+
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
   if (chartInstance) {
     chartInstance.dispose()
     chartInstance = null

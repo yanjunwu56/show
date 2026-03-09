@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Breadcrumbs from './components/Breadcrumbs.vue'
-import NotificationPanel from './components/NotificationPanel.vue'
+const NotificationPanel = defineAsyncComponent(() =>
+  import('./components/NotificationPanel.vue')
+)
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -23,6 +25,8 @@ const menuItems = [
   { to: '/hooks', label: 'Hooks', key: 'hooks' },
   { to: '/settings', label: 'Settings', key: 'settings' }
 ]
+
+const keepAlivePages = ['Dashboard', 'Users', 'Hooks']
 
 const currentTitle = computed(() => {
   if (route.meta?.titleKey) return t(route.meta.titleKey)
@@ -79,6 +83,18 @@ const updateLocale = (event) => {
 }
 
 let socketUnsubscribe = null
+const schedulePrefetch = () => {
+  const prefetch = () => {
+    // Preload heavy routes after idle time.
+    import('./views/Settings.vue')
+    import('./views/Hooks.vue')
+  }
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(prefetch)
+  } else {
+    setTimeout(prefetch, 800)
+  }
+}
 
 const realtimeEnabled = computed(
   () => !isAuthLayout.value && Boolean(currentUser.value)
@@ -109,6 +125,10 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  schedulePrefetch()
+})
 
 onBeforeUnmount(() => {
   stopRealtime()
@@ -209,7 +229,25 @@ onBeforeUnmount(() => {
         @mark-all="handleMarkAll"
       />
       <main class="content">
-        <RouterView />
+        <RouterView v-slot="{ Component, route: activeRoute }">
+          <Suspense>
+            <template #default>
+              <KeepAlive :include="keepAlivePages">
+                <component
+                  :is="Component"
+                  v-if="activeRoute.meta?.keepAlive"
+                />
+              </KeepAlive>
+              <component
+                :is="Component"
+                v-if="!activeRoute.meta?.keepAlive"
+              />
+            </template>
+            <template #fallback>
+              <div class="loading">Loading page...</div>
+            </template>
+          </Suspense>
+        </RouterView>
       </main>
     </div>
   </div>

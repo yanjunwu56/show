@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'Users' })
+
 import { onMounted, ref } from 'vue'
 import DataTable from '../components/DataTable.vue'
 import { fetchUsers } from '../api'

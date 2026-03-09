@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'Hooks' })
+
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useAsync } from '../hooks/useAsync'
 import { useCounter } from '../hooks/useCounter'
@@ -7,6 +9,7 @@ import { useEventListener } from '../hooks/useEventListener'
 import { useInterval } from '../hooks/useInterval'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { usePagination } from '../hooks/usePagination'
+import { useThrottle } from '../hooks/useThrottle'
 import { useToggle } from '../hooks/useToggle'
 
 const message = ref('hello hooks')
@@ -35,8 +38,14 @@ onUnmounted(() => {
 const { count, double, increment, decrement, reset } = useCounter(2)
 const { value: isOn, toggle: toggleSwitch } = useToggle(false)
 
-const search = ref('')
-const debouncedSearch = useDebounce(search, 500)
+const debounceInput = ref('')
+const debouncedSearch = useDebounce(debounceInput, 500)
+const throttleInput = ref('')
+const throttledValue = ref('')
+const throttledSearch = useThrottle((value) => {
+  // Throttle expensive search updates.
+  throttledValue.value = value
+}, 300)
 
 const storageNote = useLocalStorage('vue3-admin-note', 'Remember to review.')
 
@@ -123,12 +132,23 @@ const { start: startInterval, stop: stopInterval, running } = useInterval(() => 
         <div class="hook-card">
           <div class="hook-title">useDebounce</div>
           <input
-            v-model="search"
+            v-model="debounceInput"
             class="input"
             type="text"
             placeholder="Type to debounce"
           />
           <div class="hook-meta">Debounced: {{ debouncedSearch }}</div>
+        </div>
+        <div class="hook-card">
+          <div class="hook-title">useThrottle</div>
+          <input
+            class="input"
+            type="text"
+            placeholder="Type to throttle"
+            v-model="throttleInput"
+            @input="(event) => throttledSearch(event.target.value)"
+          />
+          <div class="hook-meta">Throttled: {{ throttledValue }}</div>
         </div>
         <div class="hook-card">
           <div class="hook-title">useLocalStorage</div>
