@@ -102,6 +102,34 @@ function Hooks() {
     setTicks((prev) => prev + 1)
   }, 1000)
 
+  const workerRef = useRef(null)
+  const [workerLimit, setWorkerLimit] = useState(20000)
+  const [workerLoading, setWorkerLoading] = useState(false)
+  const [workerResult, setWorkerResult] = useState('')
+
+  useEffect(() => {
+    // Web Worker offloads heavy math from the UI thread.
+    workerRef.current = new Worker(
+      new URL('../workers/computeWorker.js', import.meta.url),
+      { type: 'module' },
+    )
+    const handler = (event) => {
+      const { type, payload } = event.data || {}
+      if (type === 'sumPrimes') {
+        setWorkerLoading(false)
+        setWorkerResult(
+          `Count: ${payload.count}, Sum: ${payload.sum}, ${payload.duration}ms`,
+        )
+      }
+    }
+    workerRef.current.addEventListener('message', handler)
+    return () => {
+      workerRef.current?.removeEventListener('message', handler)
+      workerRef.current?.terminate()
+      workerRef.current = null
+    }
+  }, [])
+
   const [reducerState, dispatch] = useReducer(reducer, { total: 0 })
   const { value: contextValue, toggle: toggleContext } = useToggle(false)
 
@@ -302,6 +330,38 @@ function Hooks() {
             <div className="hook-card">
               <div className="hook-title">useInterval</div>
               <div className="hook-meta">Ticks: {ticks}</div>
+            </div>
+            <div className="hook-card">
+              <div className="hook-title">Web Worker</div>
+              <div className="hook-meta">
+                Heavy math is offloaded to a worker thread.
+              </div>
+              <input
+                className="input"
+                type="number"
+                min="1000"
+                step="1000"
+                value={workerLimit}
+                onChange={(event) => setWorkerLimit(Number(event.target.value))}
+              />
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  if (!workerRef.current) return
+                  setWorkerLoading(true)
+                  setWorkerResult('')
+                  workerRef.current.postMessage({
+                    type: 'sumPrimes',
+                    payload: { limit: workerLimit },
+                  })
+                }}
+                disabled={workerLoading}
+              >
+                {workerLoading ? 'Running...' : 'Run primes'}
+              </button>
+              <div className="hook-meta">
+                {workerResult || 'Waiting for result'}
+              </div>
             </div>
           </div>
         </div>
