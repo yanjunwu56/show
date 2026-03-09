@@ -73,6 +73,51 @@ const intervalTicks = ref(0)
 const { start: startInterval, stop: stopInterval, running } = useInterval(() => {
   intervalTicks.value += 1
 }, 1000)
+
+const workerResult = ref('')
+const workerLoading = ref(false)
+const workerLimit = ref(20000)
+let worker = null
+
+const runWorker = () => {
+  if (!worker) return
+  workerLoading.value = true
+  workerResult.value = ''
+  worker.postMessage({
+    type: 'sumPrimes',
+    payload: { limit: workerLimit.value }
+  })
+}
+
+const initWorker = () => {
+  if (worker) return
+  // Web Worker offloads heavy math from the UI thread.
+  worker = new Worker(new URL('../workers/computeWorker.js', import.meta.url), {
+    type: 'module'
+  })
+  worker.addEventListener('message', (event) => {
+    const { type, payload } = event.data || {}
+    if (type === 'sumPrimes') {
+      workerLoading.value = false
+      workerResult.value = `Count: ${payload.count}, Sum: ${payload.sum}, ${payload.duration}ms`
+    }
+  })
+}
+
+const stopWorker = () => {
+  if (worker) {
+    worker.terminate()
+    worker = null
+  }
+}
+
+onMounted(() => {
+  initWorker()
+})
+
+onUnmounted(() => {
+  stopWorker()
+})
 </script>
 
 <template>
@@ -196,6 +241,23 @@ const { start: startInterval, stop: stopInterval, running } = useInterval(() => 
               {{ running ? 'Running' : 'Stopped' }}
             </span>
           </div>
+        </div>
+        <div class="hook-card">
+          <div class="hook-title">Web Worker</div>
+          <div class="hook-meta">
+            Heavy math is offloaded to a worker thread.
+          </div>
+          <input
+            v-model.number="workerLimit"
+            class="input"
+            type="number"
+            min="1000"
+            step="1000"
+          />
+          <button class="secondary-button" @click="runWorker" :disabled="workerLoading">
+            {{ workerLoading ? 'Running...' : 'Run primes' }}
+          </button>
+          <div class="hook-meta">{{ workerResult || 'Waiting for result' }}</div>
         </div>
       </div>
     </div>
