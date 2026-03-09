@@ -18,8 +18,9 @@ import { useEventListener } from '../hooks/useEventListener'
 import { useInterval } from '../hooks/useInterval'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { usePagination } from '../hooks/usePagination'
-import { useToggle } from '../hooks/useToggle'
 import { usePrevious } from '../hooks/usePrevious'
+import { useThrottle } from '../hooks/useThrottle'
+import { useToggle } from '../hooks/useToggle'
 
 const DemoContext = createContext('default')
 
@@ -73,6 +74,12 @@ function Hooks() {
 
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 500)
+  const [throttleInput, setThrottleInput] = useState('')
+  const [throttledValue, setThrottledValue] = useState('')
+  const throttledUpdate = useThrottle((value) => {
+    // Throttle expensive search updates.
+    setThrottledValue(value)
+  }, 300)
 
   const [note, setNote] = useLocalStorage(
     'react-admin-note',
@@ -239,6 +246,21 @@ function Hooks() {
                 onChange={(event) => setSearch(event.target.value)}
               />
               <div className="hook-meta">Debounced: {debouncedSearch}</div>
+            </div>
+            <div className="hook-card">
+              <div className="hook-title">useThrottle</div>
+              <input
+                className="input"
+                type="text"
+                placeholder="Type to throttle"
+                value={throttleInput}
+                onChange={(event) => {
+                  const next = event.target.value
+                  setThrottleInput(next)
+                  throttledUpdate(next)
+                }}
+              />
+              <div className="hook-meta">Throttled: {throttledValue}</div>
             </div>
             <div className="hook-card">
               <div className="hook-title">useLocalStorage</div>

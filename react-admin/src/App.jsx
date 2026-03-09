@@ -1,5 +1,5 @@
 import './App.css'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import {
   NavLink,
   Route,
@@ -18,18 +18,20 @@ import {
 } from './api'
 import { pushNotification } from './api/handlers'
 import Breadcrumbs from './components/Breadcrumbs.jsx'
-import NotificationPanel from './components/NotificationPanel.jsx'
 import { useI18n } from './i18n/I18nProvider'
 import { getShortcuts, toggleShortcut } from './shortcuts/shortcuts'
 import { getTheme, toggleTheme } from './theme/theme'
 import { connect, disconnect, onMessage } from './websocket/socket'
-import Dashboard from './pages/Dashboard.jsx'
-import Forbidden from './pages/Forbidden.jsx'
-import Hooks from './pages/Hooks.jsx'
-import Login from './pages/Login.jsx'
-import Users from './pages/Users.jsx'
-import Settings from './pages/Settings.jsx'
-import NotFound from './pages/NotFound.jsx'
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
+const NotificationPanel = lazy(() =>
+  import('./components/NotificationPanel.jsx'),
+)
+const Forbidden = lazy(() => import('./pages/Forbidden.jsx'))
+const Hooks = lazy(() => import('./pages/Hooks.jsx'))
+const Login = lazy(() => import('./pages/Login.jsx'))
+const Users = lazy(() => import('./pages/Users.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
+const NotFound = lazy(() => import('./pages/NotFound.jsx'))
 
 const titleMap = {
   '/dashboard': 'dashboard',
@@ -80,6 +82,10 @@ function AppLayout({ user, onLogout }) {
     }
   }, [])
 
+  useEffect(() => {
+    schedulePrefetch()
+  }, [])
+
   const handleToggleShortcut = (item) => {
     setShortcuts(toggleShortcut(item))
   }
@@ -97,6 +103,19 @@ function AppLayout({ user, onLogout }) {
 
   const handleToggleTheme = () => {
     setTheme(toggleTheme())
+  }
+
+  const schedulePrefetch = () => {
+    const prefetch = () => {
+      // Preload heavy routes after idle time.
+      import('./pages/Settings.jsx')
+      import('./pages/Hooks.jsx')
+    }
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(prefetch)
+    } else {
+      setTimeout(prefetch, 800)
+    }
   }
 
   return (
@@ -194,16 +213,20 @@ function AppLayout({ user, onLogout }) {
           </div>
         </header>
         {notificationsOpen ? (
-          <NotificationPanel
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onClose={() => setNotificationsOpen(false)}
-            onMarkRead={handleMarkRead}
-            onMarkAll={handleMarkAll}
-          />
+          <Suspense fallback={<div className="loading">Loading panel...</div>}>
+            <NotificationPanel
+              notifications={notifications}
+              unreadCount={unreadCount}
+              onClose={() => setNotificationsOpen(false)}
+              onMarkRead={handleMarkRead}
+              onMarkAll={handleMarkAll}
+            />
+          </Suspense>
         ) : null}
         <main className="content">
-          <Outlet />
+          <Suspense fallback={<div className="loading">Loading page...</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
@@ -215,7 +238,14 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route
+        path="/login"
+        element={
+          <Suspense fallback={<div className="loading">Loading page...</div>}>
+            <Login />
+          </Suspense>
+        }
+      />
       <Route element={<RequireAuth />}>
         <Route path="/" element={<AppLayout user={user} onLogout={logout} />}>
           <Route index element={<Navigate to="/dashboard" replace />} />

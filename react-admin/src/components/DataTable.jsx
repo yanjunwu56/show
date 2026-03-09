@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 
 function DataTable({ columns, rows, pageSizeOptions = [5, 10, 20] }) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -190,4 +190,4 @@ function DataTable({ columns, rows, pageSizeOptions = [5, 10, 20] }) {
   )
 }
 
-export default DataTable
+export default memo(DataTable)

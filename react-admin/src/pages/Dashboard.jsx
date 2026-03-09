@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { fetchDashboard } from '../api'
+import { useEventListener } from '../hooks/useEventListener'
+import { useThrottle } from '../hooks/useThrottle'
 
 const buildChart = (chart) => ({
   tooltip: { trigger: 'axis' },
@@ -70,11 +72,11 @@ function Dashboard() {
     chartInstanceRef.current.setOption(buildChart(chartData))
   }, [chartData])
 
-  useEffect(() => {
-    const handleResize = () => chartInstanceRef.current?.resize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  const handleResize = useThrottle(() => {
+    chartInstanceRef.current?.resize()
+  }, 200)
+
+  useEventListener(window, 'resize', handleResize)
 
   useEffect(
     () => () => {

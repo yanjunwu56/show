@@ -1,3 +1,5 @@
+import { memo } from 'react'
+
 function NotificationPanel({
   notifications,
   unreadCount,
@@ -49,4 +51,4 @@ function NotificationPanel({
   )
 }
 
-export default NotificationPanel
+export default memo(NotificationPanel)
