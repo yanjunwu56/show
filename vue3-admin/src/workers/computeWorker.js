@@ -1,5 +1,7 @@
 /* eslint-disable no-restricted-globals */
-// Heavy computation worker: sum primes up to a limit.
+// Heavy computation worker: sum primes with chunked progress.
+const tasks = new Map()
+
 const isPrime = (value) => {
   if (value < 2) return false
   if (value === 2) return true
@@ -10,24 +12,71 @@ const isPrime = (value) => {
   return true
 }
 
-const sumPrimes = (limit) => {
-  let sum = 0
-  let count = 0
-  for (let i = 2; i <= limit; i += 1) {
+const processChunk = (id, current, end, chunkSize, sum, count, processed) => {
+  const task = tasks.get(id)
+  if (!task || task.canceled) {
+    self.postMessage({ type: 'canceled', payload: { id } })
+    tasks.delete(id)
+    return
+  }
+
+  const chunkEnd = Math.min(end, current + chunkSize - 1)
+  for (let i = current; i <= chunkEnd; i += 1) {
     if (isPrime(i)) {
       sum += i
       count += 1
     }
   }
-  return { sum, count }
+  const nextProcessed = processed + (chunkEnd - current + 1)
+  self.postMessage({
+    type: 'progress',
+    payload: {
+      id,
+      processed: nextProcessed,
+      total: task.total,
+      sum,
+      count
+    }
+  })
+
+  if (chunkEnd >= end) {
+    const duration = Math.round(performance.now() - task.startedAt)
+    self.postMessage({
+      type: 'done',
+      payload: { id, sum, count, duration }
+    })
+    tasks.delete(id)
+    return
+  }
+
+  setTimeout(() => {
+    processChunk(id, chunkEnd + 1, end, chunkSize, sum, count, nextProcessed)
+  }, 0)
 }
 
 self.addEventListener('message', (event) => {
   const { type, payload } = event.data || {}
-  if (type !== 'sumPrimes') return
-  const limit = Number(payload?.limit) || 0
-  const start = performance.now()
-  const result = sumPrimes(limit)
-  const duration = Math.round(performance.now() - start)
-  self.postMessage({ type: 'sumPrimes', payload: { ...result, duration } })
+  if (type === 'cancel') {
+    const id = payload?.id
+    if (tasks.has(id)) {
+      tasks.set(id, { ...tasks.get(id), canceled: true })
+    }
+    return
+  }
+
+  if (type !== 'start') return
+  const id = payload?.id
+  if (!id) return
+  const start = Number(payload?.start) || 2
+  const end = Number(payload?.end) || 0
+  const chunkSize = Number(payload?.chunkSize) || 1000
+  const total = Math.max(0, end - start + 1)
+
+  tasks.set(id, {
+    canceled: false,
+    total,
+    startedAt: performance.now()
+  })
+
+  processChunk(id, start, end, chunkSize, 0, 0, 0)
 })
