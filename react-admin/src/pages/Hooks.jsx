@@ -102,33 +102,141 @@ function Hooks() {
     setTicks((prev) => prev + 1)
   }, 1000)
 
-  const workerRef = useRef(null)
   const [workerLimit, setWorkerLimit] = useState(20000)
-  const [workerLoading, setWorkerLoading] = useState(false)
-  const [workerResult, setWorkerResult] = useState('')
+  const [workerCount, setWorkerCount] = useState(
+    Math.min(4, navigator.hardwareConcurrency || 4),
+  )
+  const [chunkSize, setChunkSize] = useState(2000)
+  const [workerTasks, setWorkerTasks] = useState([])
+  const workersRef = useRef(new Map())
 
-  useEffect(() => {
-    // Web Worker offloads heavy math from the UI thread.
-    workerRef.current = new Worker(
-      new URL('../workers/computeWorker.js', import.meta.url),
-      { type: 'module' },
+  const overallProgress = useMemo(() => {
+    const totals = workerTasks.reduce(
+      (acc, task) => {
+        acc.total += task.total
+        acc.processed += task.processed
+        acc.sum += task.sum
+        acc.count += task.count
+        return acc
+      },
+      { total: 0, processed: 0, sum: 0, count: 0 },
     )
-    const handler = (event) => {
-      const { type, payload } = event.data || {}
-      if (type === 'sumPrimes') {
-        setWorkerLoading(false)
-        setWorkerResult(
-          `Count: ${payload.count}, Sum: ${payload.sum}, ${payload.duration}ms`,
-        )
-      }
-    }
-    workerRef.current.addEventListener('message', handler)
-    return () => {
-      workerRef.current?.removeEventListener('message', handler)
-      workerRef.current?.terminate()
-      workerRef.current = null
-    }
+    const percent = totals.total
+      ? Math.round((totals.processed / totals.total) * 100)
+      : 0
+    return { ...totals, percent }
+  }, [workerTasks])
+
+  const isRunning = useMemo(
+    () =>
+      workerTasks.some(
+        (task) => task.status === 'running' || task.status === 'starting',
+      ),
+    [workerTasks],
+  )
+
+  const updateTask = useCallback((id, patch) => {
+    setWorkerTasks((prev) =>
+      prev.map((task) => (task.id === id ? { ...task, ...patch } : task)),
+    )
   }, [])
+
+  const createRanges = useCallback(() => {
+    const limit = Math.max(2, workerLimit)
+    const count = Math.max(1, workerCount)
+    const size = Math.ceil((limit - 1) / count)
+    const ranges = []
+    let start = 2
+    for (let index = 0; index < count; index += 1) {
+      const end = Math.min(limit, start + size - 1)
+      if (start > limit) break
+      ranges.push({ start, end })
+      start = end + 1
+    }
+    return ranges
+  }, [workerCount, workerLimit])
+
+  const stopWorkers = useCallback(() => {
+    workersRef.current.forEach((worker) => worker.terminate())
+    workersRef.current.clear()
+    setWorkerTasks([])
+  }, [])
+
+  const cancelWorkers = useCallback(() => {
+    setWorkerTasks((prev) =>
+      prev.map((task) =>
+        task.status === 'running' || task.status === 'starting'
+          ? { ...task, status: 'canceling' }
+          : task,
+      ),
+    )
+    workersRef.current.forEach((worker, id) => {
+      worker.postMessage({ type: 'cancel', payload: { id } })
+    })
+  }, [])
+
+  const startWorkers = useCallback(() => {
+    stopWorkers()
+    const ranges = createRanges()
+    const tasks = ranges.map((range, index) => ({
+      id: `${Date.now()}-${index}`,
+      start: range.start,
+      end: range.end,
+      total: range.end - range.start + 1,
+      processed: 0,
+      sum: 0,
+      count: 0,
+      duration: 0,
+      status: 'starting',
+    }))
+    setWorkerTasks(tasks)
+    tasks.forEach((task) => {
+      const worker = new Worker(
+        new URL('../workers/computeWorker.js', import.meta.url),
+        { type: 'module' },
+      )
+      workersRef.current.set(task.id, worker)
+      worker.addEventListener('message', (event) => {
+        const { type, payload } = event.data || {}
+        if (payload?.id !== task.id) return
+        if (type === 'progress') {
+          updateTask(task.id, {
+            processed: payload.processed,
+            sum: payload.sum,
+            count: payload.count,
+            status: 'running',
+          })
+        }
+        if (type === 'done') {
+          updateTask(task.id, {
+            processed: task.total,
+            sum: payload.sum,
+            count: payload.count,
+            duration: payload.duration,
+            status: 'done',
+          })
+          workersRef.current.get(task.id)?.terminate()
+          workersRef.current.delete(task.id)
+        }
+        if (type === 'canceled') {
+          updateTask(task.id, { status: 'canceled' })
+          workersRef.current.get(task.id)?.terminate()
+          workersRef.current.delete(task.id)
+        }
+      })
+      worker.postMessage({
+        type: 'start',
+        payload: {
+          id: task.id,
+          start: task.start,
+          end: task.end,
+          chunkSize,
+        },
+      })
+    })
+  }, [chunkSize, createRanges, stopWorkers, updateTask])
+
+  useEffect(() => () => stopWorkers(), [stopWorkers])
 
   const [reducerState, dispatch] = useReducer(reducer, { total: 0 })
   const { value: contextValue, toggle: toggleContext } = useToggle(false)
@@ -240,7 +348,7 @@ function Hooks() {
             pagination.
           </p>
           <div className="hooks-grid">
-            <div className="hook-card">
+            <div className="hook-card worker-card">
               <div className="hook-title">useCounter</div>
               <div className="hook-meta">
                 Count: {count} (double: {double})
@@ -332,35 +440,92 @@ function Hooks() {
               <div className="hook-meta">Ticks: {ticks}</div>
             </div>
             <div className="hook-card">
-              <div className="hook-title">Web Worker</div>
+              <div className="hook-title">Web Worker (parallel)</div>
               <div className="hook-meta">
-                Heavy math is offloaded to a worker thread.
+                Parallel workers run chunked prime sums with progress updates.
               </div>
-              <input
-                className="input"
-                type="number"
-                min="1000"
-                step="1000"
-                value={workerLimit}
-                onChange={(event) => setWorkerLimit(Number(event.target.value))}
-              />
-              <button
-                className="secondary-button"
-                onClick={() => {
-                  if (!workerRef.current) return
-                  setWorkerLoading(true)
-                  setWorkerResult('')
-                  workerRef.current.postMessage({
-                    type: 'sumPrimes',
-                    payload: { limit: workerLimit },
-                  })
-                }}
-                disabled={workerLoading}
-              >
-                {workerLoading ? 'Running...' : 'Run primes'}
-              </button>
+              <div className="worker-controls">
+                <label className="table-select">
+                  Limit
+                  <input
+                    className="input small-input"
+                    type="number"
+                    min="2000"
+                    step="1000"
+                    value={workerLimit}
+                    onChange={(event) =>
+                      setWorkerLimit(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <label className="table-select">
+                  Workers
+                  <input
+                    className="input small-input"
+                    type="number"
+                    min="1"
+                    max="8"
+                    value={workerCount}
+                    onChange={(event) =>
+                      setWorkerCount(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <label className="table-select">
+                  Chunk
+                  <input
+                    className="input small-input"
+                    type="number"
+                    min="500"
+                    step="500"
+                    value={chunkSize}
+                    onChange={(event) =>
+                      setChunkSize(Number(event.target.value))
+                    }
+                  />
+                </label>
+              </div>
+              <div className="hook-actions">
+                <button
+                  className="secondary-button"
+                  onClick={startWorkers}
+                  disabled={isRunning}
+                >
+                  Start
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={cancelWorkers}
+                  disabled={!isRunning}
+                >
+                  Cancel
+                </button>
+                <button className="secondary-button" onClick={stopWorkers}>
+                  Stop
+                </button>
+              </div>
+              <div className="progress-bar">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${overallProgress.percent}%` }}
+                ></div>
+              </div>
               <div className="hook-meta">
-                {workerResult || 'Waiting for result'}
+                {overallProgress.percent}% · Count {overallProgress.count} · Sum{' '}
+                {overallProgress.sum}
+              </div>
+              <div className="worker-grid">
+                {workerTasks.map((task) => (
+                  <div key={task.id} className="worker-item">
+                    <div className="hook-meta">
+                      Worker {task.id.slice(-2)} · {task.status}
+                    </div>
+                    <div className="hook-meta">
+                      {task.processed} / {task.total}
+                      {task.duration ? ` · ${task.duration}ms` : ''}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
