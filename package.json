@@ -3,13 +3,24 @@
   "private": true,
   "workspaces": [
     "vue3-admin",
-    "react-admin"
+    "react-admin",
+    "packages/*"
   ],
   "scripts": {
     "dev:vue": "npm run dev -w vue3-admin",
     "dev:react": "npm run dev -w react-admin",
     "build": "node scripts/run-workspaces.mjs build",
     "lint": "node scripts/run-workspaces.mjs lint",
-    "format": "node scripts/run-workspaces.mjs format"
+    "format": "node scripts/run-workspaces.mjs format",
+    "turbo:build": "turbo run build",
+    "turbo:lint": "turbo run lint",
+    "turbo:format": "turbo run format",
+    "turbo:dev": "turbo run dev --parallel",
+    "changeset": "changeset",
+    "version-packages": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.30.0",
+    "turbo": "^2.8.20"
   }
 }

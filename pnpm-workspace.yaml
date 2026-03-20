@@ -1,0 +1,6 @@
+packages:
+  # Apps
+  - "vue3-admin"
+  - "react-admin"
+  # Shared packages
+  - "packages/*"

@@ -22,6 +22,7 @@ import { usePrevious } from '../hooks/usePrevious'
 import { useThrottle } from '../hooks/useThrottle'
 import { useToggle } from '../hooks/useToggle'
 import { emitMessage } from '../websocket/socket'
+import { formatNumber } from '@admin/shared'
 
 const DemoContext = createContext('default')
 
@@ -102,6 +103,9 @@ function Hooks() {
   useInterval(() => {
     setTicks((prev) => prev + 1)
   }, 1000)
+
+  // Workspace dependency from packages/shared (monorepo linking).
+  const sharedNumber = formatNumber(1234567)
 
   const [workerLimit, setWorkerLimit] = useState(20000)
   const [workerCount, setWorkerCount] = useState(
@@ -550,6 +554,12 @@ function Hooks() {
             <div className="hook-card">
               <div className="hook-title">useInterval</div>
               <div className="hook-meta">Ticks: {ticks}</div>
+            </div>
+            <div className="hook-card">
+              <div className="hook-title">Shared workspace package</div>
+              <div className="hook-meta">
+                formatNumber(1234567) = {sharedNumber}
+              </div>
             </div>
             <div className="hook-card">
               <div className="hook-title">Web Worker (parallel)</div>

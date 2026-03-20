@@ -2,6 +2,7 @@
 defineOptions({ name: 'Hooks' })
 
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { formatNumber } from '@admin/shared'
 import { useAsync } from '../hooks/useAsync'
 import { useCounter } from '../hooks/useCounter'
 import { useDebounce } from '../hooks/useDebounce'
@@ -74,6 +75,9 @@ const intervalTicks = ref(0)
 const { start: startInterval, stop: stopInterval, running } = useInterval(() => {
   intervalTicks.value += 1
 }, 1000)
+
+// Workspace dependency from packages/shared (monorepo linking).
+const sharedNumber = formatNumber(1234567)
 
 const workerLimit = ref(20000)
 const workerCount = ref(Math.min(4, navigator.hardwareConcurrency || 4))
@@ -447,6 +451,12 @@ onUnmounted(() => {
             <span class="hook-meta">
               {{ running ? 'Running' : 'Stopped' }}
             </span>
+          </div>
+        </div>
+        <div class="hook-card">
+          <div class="hook-title">Shared workspace package</div>
+          <div class="hook-meta">
+            formatNumber(1234567) = {{ sharedNumber }}
           </div>
         </div>
         <div class="hook-card worker-card">
