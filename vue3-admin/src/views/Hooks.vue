@@ -1,7 +1,7 @@
 <script setup>
 defineOptions({ name: 'Hooks' })
 
-import { computed, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
+import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { useAsync } from '../hooks/useAsync'
 import { useCounter } from '../hooks/useCounter'
 import { useDebounce } from '../hooks/useDebounce'
@@ -11,6 +11,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage'
 import { usePagination } from '../hooks/usePagination'
 import { useThrottle } from '../hooks/useThrottle'
 import { useToggle } from '../hooks/useToggle'
+import { emitMessage } from '../services/socket'
 
 const message = ref('hello hooks')
 const upperMessage = computed(() => message.value.toUpperCase())
@@ -78,7 +79,10 @@ const workerLimit = ref(20000)
 const workerCount = ref(Math.min(4, navigator.hardwareConcurrency || 4))
 const chunkSize = ref(2000)
 const workerTasks = ref([])
+const workerQueue = ref([])
+const activeJob = ref(null)
 const workerPool = new Map()
+const lastNotifiedPercent = ref(-1)
 
 const overallProgress = computed(() => {
   const totals = workerTasks.value.reduce(
@@ -103,9 +107,21 @@ const isRunning = computed(() =>
   )
 )
 
-const createRanges = () => {
-  const limit = Math.max(2, workerLimit.value)
-  const count = Math.max(1, workerCount.value)
+const emitProgressNotification = (percent) => {
+  if (!activeJob.value) return
+  const payload = {
+    id: `job-${activeJob.value.id}-${percent}`,
+    title: 'Worker progress',
+    body: `Job ${activeJob.value.id}: ${percent}% complete`,
+    read: false,
+    time: 'Just now'
+  }
+  emitMessage(payload)
+}
+
+const createRanges = (job) => {
+  const limit = Math.max(2, job.limit)
+  const count = Math.max(1, job.workerCount)
   const size = Math.ceil((limit - 1) / count)
   const ranges = []
   let start = 2
@@ -136,6 +152,12 @@ const handleWorkerMessage = (event) => {
       status: 'running'
     })
   }
+  if (type === 'paused') {
+    updateTask(id, { status: 'paused' })
+  }
+  if (type === 'resumed') {
+    updateTask(id, { status: 'running' })
+  }
   if (type === 'done') {
     updateTask(id, {
       processed: workerTasks.value.find((t) => t.id === id)?.total || 0,
@@ -154,11 +176,11 @@ const handleWorkerMessage = (event) => {
   }
 }
 
-const startWorkers = () => {
-  stopWorkers()
-  const ranges = createRanges()
+const startWorkers = (job) => {
+  stopWorkers(false)
+  const ranges = createRanges(job)
   const tasks = ranges.map((range, index) => ({
-    id: `${Date.now()}-${index}`,
+    id: `${job.id}-${index}`,
     start: range.start,
     end: range.end,
     total: range.end - range.start + 1,
@@ -182,9 +204,55 @@ const startWorkers = () => {
         id: task.id,
         start: task.start,
         end: task.end,
-        chunkSize: chunkSize.value
+        chunkSize: job.chunkSize
       }
     })
+  })
+}
+
+const startNextJob = () => {
+  if (isRunning.value || activeJob.value) return
+  const nextJob = workerQueue.value.shift()
+  if (!nextJob) return
+  activeJob.value = { ...nextJob, status: 'running' }
+  lastNotifiedPercent.value = -1
+  startWorkers(nextJob)
+}
+
+const enqueueJob = () => {
+  const job = {
+    id: `${Date.now()}`.slice(-6),
+    limit: workerLimit.value,
+    workerCount: workerCount.value,
+    chunkSize: chunkSize.value,
+    status: 'queued'
+  }
+  workerQueue.value.push(job)
+  if (!activeJob.value && !isRunning.value) {
+    startNextJob()
+  }
+}
+
+const pauseWorkers = () => {
+  workerTasks.value.forEach((task) => {
+    if (task.status === 'running' || task.status === 'starting') {
+      updateTask(task.id, { status: 'pausing' })
+      workerPool.get(task.id)?.postMessage({
+        type: 'pause',
+        payload: { id: task.id }
+      })
+    }
+  })
+}
+
+const resumeWorkers = () => {
+  workerTasks.value.forEach((task) => {
+    if (task.status === 'paused') {
+      workerPool.get(task.id)?.postMessage({
+        type: 'resume',
+        payload: { id: task.id }
+      })
+    }
   })
 }
 
@@ -200,12 +268,60 @@ const cancelWorkers = () => {
   })
 }
 
-const stopWorkers = () => {
+const clearQueue = () => {
+  workerQueue.value = []
+}
+
+const stopAll = () => {
+  stopWorkers(true)
+  clearQueue()
+}
+
+const stopWorkers = (resetJob = true) => {
   workerPool.forEach((worker) => worker.terminate())
   workerPool.clear()
   workerTasks.value = []
+  if (resetJob) {
+    activeJob.value = null
+  }
 }
 
+watch(
+  () => overallProgress.value.percent,
+  (percent) => {
+    if (!activeJob.value) return
+    if (percent === 100 || percent - lastNotifiedPercent.value >= 10) {
+      lastNotifiedPercent.value = percent
+      emitProgressNotification(percent)
+    }
+  }
+)
+
+watch(
+  () => workerTasks.value.map((task) => task.status),
+  () => {
+    if (!workerTasks.value.length || !activeJob.value) return
+    const done = workerTasks.value.every((task) =>
+      ['done', 'canceled'].includes(task.status)
+    )
+    if (done) {
+      const status = workerTasks.value.some((task) => task.status === 'canceled')
+        ? 'canceled'
+        : 'done'
+      activeJob.value = { ...activeJob.value, status }
+      emitMessage({
+        id: `job-${activeJob.value.id}-${status}`,
+        title: 'Worker job finished',
+        body: `Job ${activeJob.value.id} ${status}`,
+        read: false,
+        time: 'Just now'
+      })
+      activeJob.value = null
+      workerTasks.value = []
+      startNextJob()
+    }
+  }
+)
 onUnmounted(() => {
   stopWorkers()
 })
@@ -371,14 +487,23 @@ onUnmounted(() => {
             </label>
           </div>
           <div class="hook-actions">
-            <button class="secondary-button" @click="startWorkers" :disabled="isRunning">
-              Start
+            <button class="secondary-button" @click="enqueueJob">
+              Add job
+            </button>
+            <button class="secondary-button" @click="startNextJob" :disabled="isRunning || !workerQueue.length">
+              Start next
+            </button>
+            <button class="secondary-button" @click="pauseWorkers" :disabled="!isRunning">
+              Pause
+            </button>
+            <button class="secondary-button" @click="resumeWorkers" :disabled="isRunning && !workerTasks.some((t) => t.status === 'paused')">
+              Resume
             </button>
             <button class="secondary-button" @click="cancelWorkers" :disabled="!isRunning">
               Cancel
             </button>
-            <button class="secondary-button" @click="stopWorkers">
-              Stop
+            <button class="secondary-button" @click="stopAll">
+              Stop all
             </button>
           </div>
           <div class="progress-bar">
@@ -388,6 +513,17 @@ onUnmounted(() => {
             {{ overallProgress.percent }}% · Count {{ overallProgress.count }} · Sum
             {{ overallProgress.sum }}
           </div>
+          <div class="hook-meta">
+            Active job:
+            {{ activeJob ? `${activeJob.id} (${activeJob.status})` : 'None' }}
+            · Queue: {{ workerQueue.length }}
+          </div>
+          <ul v-if="workerQueue.length" class="hook-list">
+            <li v-for="job in workerQueue" :key="job.id">
+              Job {{ job.id }} · limit {{ job.limit }} · workers
+              {{ job.workerCount }}
+            </li>
+          </ul>
           <div class="worker-grid">
             <div v-for="task in workerTasks" :key="task.id" class="worker-item">
               <div class="hook-meta">

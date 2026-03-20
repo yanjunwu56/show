@@ -29,4 +29,8 @@ const onMessage = (handler) => {
   return () => listeners.delete(handler)
 }
 
-export { connect, disconnect, onMessage }
+const emitMessage = (message) => {
+  listeners.forEach((handler) => handler(message))
+}
+
+export { connect, disconnect, onMessage, emitMessage }
