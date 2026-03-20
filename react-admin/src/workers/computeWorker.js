@@ -12,27 +12,38 @@ const isPrime = (value) => {
   return true
 }
 
-const processChunk = (id, current, end, chunkSize, sum, count, processed) => {
+const step = (id) => {
   const task = tasks.get(id)
-  if (!task || task.canceled) {
+  if (!task) return
+  if (task.canceled) {
     self.postMessage({ type: 'canceled', payload: { id } })
     tasks.delete(id)
     return
   }
+  if (task.paused) return
 
+  const { current, end, chunkSize } = task
   const chunkEnd = Math.min(end, current + chunkSize - 1)
+  let { sum, count, processed } = task
   for (let i = current; i <= chunkEnd; i += 1) {
     if (isPrime(i)) {
       sum += i
       count += 1
     }
   }
-  const nextProcessed = processed + (chunkEnd - current + 1)
+  processed += chunkEnd - current + 1
+  tasks.set(id, {
+    ...task,
+    current: chunkEnd + 1,
+    sum,
+    count,
+    processed,
+  })
   self.postMessage({
     type: 'progress',
     payload: {
       id,
-      processed: nextProcessed,
+      processed,
       total: task.total,
       sum,
       count,
@@ -49,9 +60,7 @@ const processChunk = (id, current, end, chunkSize, sum, count, processed) => {
     return
   }
 
-  setTimeout(() => {
-    processChunk(id, chunkEnd + 1, end, chunkSize, sum, count, nextProcessed)
-  }, 0)
+  setTimeout(() => step(id), 0)
 }
 
 self.addEventListener('message', (event) => {
@@ -59,7 +68,33 @@ self.addEventListener('message', (event) => {
   if (type === 'cancel') {
     const id = payload?.id
     if (tasks.has(id)) {
-      tasks.set(id, { ...tasks.get(id), canceled: true })
+      const task = tasks.get(id)
+      tasks.set(id, { ...task, canceled: true })
+      if (task.paused) {
+        self.postMessage({ type: 'canceled', payload: { id } })
+        tasks.delete(id)
+      }
+    }
+    return
+  }
+
+  if (type === 'pause') {
+    const id = payload?.id
+    const task = tasks.get(id)
+    if (task && !task.paused) {
+      tasks.set(id, { ...task, paused: true })
+      self.postMessage({ type: 'paused', payload: { id } })
+    }
+    return
+  }
+
+  if (type === 'resume') {
+    const id = payload?.id
+    const task = tasks.get(id)
+    if (task && task.paused) {
+      tasks.set(id, { ...task, paused: false })
+      self.postMessage({ type: 'resumed', payload: { id } })
+      step(id)
     }
     return
   }
@@ -74,9 +109,16 @@ self.addEventListener('message', (event) => {
 
   tasks.set(id, {
     canceled: false,
+    paused: false,
     total,
     startedAt: performance.now(),
+    current: start,
+    end,
+    chunkSize,
+    sum: 0,
+    count: 0,
+    processed: 0,
   })
 
-  processChunk(id, start, end, chunkSize, 0, 0, 0)
+  step(id)
 })

@@ -21,6 +21,7 @@ import { usePagination } from '../hooks/usePagination'
 import { usePrevious } from '../hooks/usePrevious'
 import { useThrottle } from '../hooks/useThrottle'
 import { useToggle } from '../hooks/useToggle'
+import { emitMessage } from '../websocket/socket'
 
 const DemoContext = createContext('default')
 
@@ -108,7 +109,10 @@ function Hooks() {
   )
   const [chunkSize, setChunkSize] = useState(2000)
   const [workerTasks, setWorkerTasks] = useState([])
+  const [workerQueue, setWorkerQueue] = useState([])
+  const [activeJob, setActiveJob] = useState(null)
   const workersRef = useRef(new Map())
+  const lastNotifiedPercent = useRef(-1)
 
   const overallProgress = useMemo(() => {
     const totals = workerTasks.reduce(
@@ -141,9 +145,9 @@ function Hooks() {
     )
   }, [])
 
-  const createRanges = useCallback(() => {
-    const limit = Math.max(2, workerLimit)
-    const count = Math.max(1, workerCount)
+  const createRanges = useCallback((job) => {
+    const limit = Math.max(2, job.limit)
+    const count = Math.max(1, job.workerCount)
     const size = Math.ceil((limit - 1) / count)
     const ranges = []
     let start = 2
@@ -154,12 +158,15 @@ function Hooks() {
       start = end + 1
     }
     return ranges
-  }, [workerCount, workerLimit])
+  }, [])
 
-  const stopWorkers = useCallback(() => {
+  const stopWorkers = useCallback((resetJob = true) => {
     workersRef.current.forEach((worker) => worker.terminate())
     workersRef.current.clear()
     setWorkerTasks([])
+    if (resetJob) {
+      setActiveJob(null)
+    }
   }, [])
 
   const cancelWorkers = useCallback(() => {
@@ -175,11 +182,12 @@ function Hooks() {
     })
   }, [])
 
-  const startWorkers = useCallback(() => {
-    stopWorkers()
-    const ranges = createRanges()
+  const startWorkers = useCallback(
+    (job) => {
+      stopWorkers(false)
+      const ranges = createRanges(job)
     const tasks = ranges.map((range, index) => ({
-      id: `${Date.now()}-${index}`,
+        id: `${job.id}-${index}`,
       start: range.start,
       end: range.end,
       total: range.end - range.start + 1,
@@ -190,7 +198,7 @@ function Hooks() {
       status: 'starting',
     }))
     setWorkerTasks(tasks)
-    tasks.forEach((task) => {
+      tasks.forEach((task) => {
       const worker = new Worker(
         new URL('../workers/computeWorker.js', import.meta.url),
         { type: 'module' },
@@ -206,6 +214,12 @@ function Hooks() {
             count: payload.count,
             status: 'running',
           })
+        }
+        if (type === 'paused') {
+          updateTask(task.id, { status: 'paused' })
+        }
+        if (type === 'resumed') {
+          updateTask(task.id, { status: 'running' })
         }
         if (type === 'done') {
           updateTask(task.id, {
@@ -230,11 +244,109 @@ function Hooks() {
           id: task.id,
           start: task.start,
           end: task.end,
-          chunkSize,
+            chunkSize: job.chunkSize,
         },
       })
     })
-  }, [chunkSize, createRanges, stopWorkers, updateTask])
+    },
+    [createRanges, stopWorkers, updateTask],
+  )
+
+  const enqueueJob = () => {
+    const job = {
+      id: `${Date.now()}`.slice(-6),
+      limit: workerLimit,
+      workerCount,
+      chunkSize,
+      status: 'queued',
+    }
+    setWorkerQueue((prev) => [...prev, job])
+    if (!activeJob && !isRunning) {
+      startNextJob()
+    }
+  }
+
+  const startNextJob = useCallback(() => {
+    if (isRunning || activeJob) return
+    setWorkerQueue((prev) => {
+      if (!prev.length) return prev
+      const [job, ...rest] = prev
+      setActiveJob({ ...job, status: 'running' })
+      lastNotifiedPercent.current = -1
+      startWorkers(job)
+      return rest
+    })
+  }, [activeJob, isRunning, startWorkers])
+
+  const pauseWorkers = () => {
+    workerTasks.forEach((task) => {
+      if (task.status === 'running' || task.status === 'starting') {
+        updateTask(task.id, { status: 'pausing' })
+        workersRef.current
+          .get(task.id)
+          ?.postMessage({ type: 'pause', payload: { id: task.id } })
+      }
+    })
+  }
+
+  const resumeWorkers = () => {
+    workerTasks.forEach((task) => {
+      if (task.status === 'paused') {
+        workersRef.current
+          .get(task.id)
+          ?.postMessage({ type: 'resume', payload: { id: task.id } })
+      }
+    })
+  }
+
+  const stopAll = () => {
+    stopWorkers(true)
+    setWorkerQueue([])
+  }
+
+  const emitProgressNotification = (percent) => {
+    if (!activeJob) return
+    emitMessage({
+      id: `job-${activeJob.id}-${percent}`,
+      title: 'Worker progress',
+      body: `Job ${activeJob.id}: ${percent}% complete`,
+      read: false,
+      time: 'Just now',
+    })
+  }
+
+  useEffect(() => {
+    if (!activeJob) return
+    if (
+      overallProgress.percent === 100 ||
+      overallProgress.percent - lastNotifiedPercent.current >= 10
+    ) {
+      lastNotifiedPercent.current = overallProgress.percent
+      emitProgressNotification(overallProgress.percent)
+    }
+  }, [activeJob, overallProgress.percent])
+
+  useEffect(() => {
+    if (!workerTasks.length || !activeJob) return
+    const done = workerTasks.every((task) =>
+      ['done', 'canceled'].includes(task.status),
+    )
+    if (done) {
+      const status = workerTasks.some((task) => task.status === 'canceled')
+        ? 'canceled'
+        : 'done'
+      emitMessage({
+        id: `job-${activeJob.id}-${status}`,
+        title: 'Worker job finished',
+        body: `Job ${activeJob.id} ${status}`,
+        read: false,
+        time: 'Just now',
+      })
+      setActiveJob(null)
+      setWorkerTasks([])
+      startNextJob()
+    }
+  }, [activeJob, startNextJob, workerTasks])
 
   useEffect(() => () => stopWorkers(), [stopWorkers])
 
@@ -365,7 +477,7 @@ function Hooks() {
                 </button>
               </div>
             </div>
-            <div className="hook-card">
+            <div className="hook-card worker-card">
               <div className="hook-title">useToggle</div>
               <div className="hook-meta">Switch is {isOn ? 'ON' : 'OFF'}</div>
               <button className="secondary-button" onClick={toggleSwitch}>
@@ -486,12 +598,32 @@ function Hooks() {
                 </label>
               </div>
               <div className="hook-actions">
+                <button className="secondary-button" onClick={enqueueJob}>
+                  Add job
+                </button>
                 <button
                   className="secondary-button"
-                  onClick={startWorkers}
-                  disabled={isRunning}
+                  onClick={startNextJob}
+                  disabled={isRunning || workerQueue.length === 0}
                 >
-                  Start
+                  Start next
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={pauseWorkers}
+                  disabled={!isRunning}
+                >
+                  Pause
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={resumeWorkers}
+                  disabled={
+                    isRunning &&
+                    !workerTasks.some((task) => task.status === 'paused')
+                  }
+                >
+                  Resume
                 </button>
                 <button
                   className="secondary-button"
@@ -500,8 +632,8 @@ function Hooks() {
                 >
                   Cancel
                 </button>
-                <button className="secondary-button" onClick={stopWorkers}>
-                  Stop
+                <button className="secondary-button" onClick={stopAll}>
+                  Stop all
                 </button>
               </div>
               <div className="progress-bar">
@@ -514,6 +646,21 @@ function Hooks() {
                 {overallProgress.percent}% · Count {overallProgress.count} · Sum{' '}
                 {overallProgress.sum}
               </div>
+              <div className="hook-meta">
+                Active job:{' '}
+                {activeJob ? `${activeJob.id} (${activeJob.status})` : 'None'} ·
+                Queue: {workerQueue.length}
+              </div>
+              {workerQueue.length ? (
+                <ul className="hook-list">
+                  {workerQueue.map((job) => (
+                    <li key={job.id}>
+                      Job {job.id} · limit {job.limit} · workers{' '}
+                      {job.workerCount}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <div className="worker-grid">
                 {workerTasks.map((task) => (
                   <div key={task.id} className="worker-item">
