@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run lint-staged so only staged files are formatted and linted.
+npx lint-staged
