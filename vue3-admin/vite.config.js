@@ -3,5 +3,18 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Set CDN base path at build time: VITE_CDN_BASE="https://cdn.example.com/".
+  base: process.env.VITE_CDN_BASE || '/',
   plugins: [vue()],
+  build: {
+    // Split large libraries into separate chunks for better caching.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vue: ['vue', 'vue-router'],
+          echarts: ['echarts']
+        }
+      }
+    }
+  }
 })
