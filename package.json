@@ -1,0 +1,15 @@
+{
+  "name": "admin-monorepo",
+  "private": true,
+  "workspaces": [
+    "vue3-admin",
+    "react-admin"
+  ],
+  "scripts": {
+    "dev:vue": "npm run dev -w vue3-admin",
+    "dev:react": "npm run dev -w react-admin",
+    "build": "node scripts/run-workspaces.mjs build",
+    "lint": "node scripts/run-workspaces.mjs lint",
+    "format": "node scripts/run-workspaces.mjs format"
+  }
+}

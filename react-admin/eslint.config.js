@@ -6,6 +6,7 @@ import prettier from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
+  // Workspace configs are handled per package in the monorepo.
   globalIgnores(['dist']),
   {
     files: ['**/*.{js,jsx}'],

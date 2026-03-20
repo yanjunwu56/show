@@ -5,6 +5,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 // ESLint flat config: Vue + base JS + Prettier compatibility.
 export default defineConfig([
+  // Workspace configs are handled per package in the monorepo.
   globalIgnores(['dist', 'node_modules']),
   {
     files: ['**/*.{js,vue}'],
