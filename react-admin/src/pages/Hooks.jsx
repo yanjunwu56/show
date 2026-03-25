@@ -106,17 +106,28 @@ function Hooks() {
 
   // Workspace dependency from packages/shared (monorepo linking).
   const sharedNumber = formatNumber(1234567)
+  const [loaded, setLoaded] = useState(false)
+  const imageSrc = loaded
+    ? 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=640&q=80'
+    : ''
+
+  useEffect(() => {
+    // Lazy load heavy images only after mount.
+    setLoaded(true)
+  }, [])
 
   const [workerLimit, setWorkerLimit] = useState(20000)
   const [workerCount, setWorkerCount] = useState(
     Math.min(4, navigator.hardwareConcurrency || 4),
   )
   const [chunkSize, setChunkSize] = useState(2000)
+  const [workerPriority, setWorkerPriority] = useState(3)
   const [workerTasks, setWorkerTasks] = useState([])
   const [workerQueue, setWorkerQueue] = useState([])
   const [activeJob, setActiveJob] = useState(null)
   const workersRef = useRef(new Map())
   const lastNotifiedPercent = useRef(-1)
+  const queueKey = 'react-admin-worker-queue'
 
   const overallProgress = useMemo(() => {
     const totals = workerTasks.reduce(
@@ -164,6 +175,46 @@ function Hooks() {
     return ranges
   }, [])
 
+  const computePoolSize = useCallback((job) => {
+    // Auto scale workers based on range size.
+    const workload = Math.max(1, job.limit - 1)
+    const recommended = Math.min(
+      job.workerCount,
+      Math.max(1, Math.ceil(workload / 5000)),
+    )
+    return recommended
+  }, [])
+
+  const persistQueue = useCallback(
+    (queue, job, paused = {}) => {
+      localStorage.setItem(
+        queueKey,
+        JSON.stringify({ queue, activeJob: job, paused }),
+      )
+    },
+    [queueKey],
+  )
+
+  const restoreQueue = useCallback(() => {
+    const raw = localStorage.getItem(queueKey)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw)
+      const restored = parsed.queue || []
+      if (parsed.activeJob) {
+        // Restore unfinished job back into queue after reload.
+        restored.unshift({
+          ...parsed.activeJob,
+          status: 'queued',
+          paused: parsed.paused?.[parsed.activeJob.id] || null,
+        })
+      }
+      setWorkerQueue(restored)
+    } catch (error) {
+      setWorkerQueue([])
+    }
+  }, [queueKey])
+
   const stopWorkers = useCallback((resetJob = true) => {
     workersRef.current.forEach((worker) => worker.terminate())
     workersRef.current.clear()
@@ -186,74 +237,97 @@ function Hooks() {
     })
   }, [])
 
+  const recordPause = (job, task) => {
+    if (!job) return
+    const raw = localStorage.getItem(queueKey)
+    const parsed = raw ? JSON.parse(raw) : { queue: [], activeJob: null }
+    parsed.paused = parsed.paused || {}
+    parsed.paused[job.id] = parsed.paused[job.id] || {}
+    parsed.paused[job.id][task.id] = {
+      current: task.current,
+      sum: task.sum,
+      count: task.count,
+      processed: task.processed,
+      end: task.end,
+    }
+    localStorage.setItem(queueKey, JSON.stringify(parsed))
+  }
+
   const startWorkers = useCallback(
     (job) => {
       stopWorkers(false)
-      const ranges = createRanges(job)
-    const tasks = ranges.map((range, index) => ({
+      const scaledJob = { ...job, workerCount: computePoolSize(job) }
+      const ranges = createRanges(scaledJob)
+      const tasks = ranges.map((range, index) => ({
         id: `${job.id}-${index}`,
-      start: range.start,
-      end: range.end,
-      total: range.end - range.start + 1,
-      processed: 0,
-      sum: 0,
-      count: 0,
-      duration: 0,
-      status: 'starting',
-    }))
-    setWorkerTasks(tasks)
+        start: range.start,
+        end: range.end,
+        total: range.end - range.start + 1,
+        processed: 0,
+        sum: 0,
+        count: 0,
+        duration: 0,
+        status: 'starting',
+      }))
+      setWorkerTasks(tasks)
       tasks.forEach((task) => {
-      const worker = new Worker(
-        new URL('../workers/computeWorker.js', import.meta.url),
-        { type: 'module' },
-      )
-      workersRef.current.set(task.id, worker)
-      worker.addEventListener('message', (event) => {
-        const { type, payload } = event.data || {}
-        if (payload?.id !== task.id) return
-        if (type === 'progress') {
-          updateTask(task.id, {
-            processed: payload.processed,
-            sum: payload.sum,
-            count: payload.count,
-            status: 'running',
-          })
-        }
-        if (type === 'paused') {
-          updateTask(task.id, { status: 'paused' })
-        }
-        if (type === 'resumed') {
-          updateTask(task.id, { status: 'running' })
-        }
-        if (type === 'done') {
-          updateTask(task.id, {
-            processed: task.total,
-            sum: payload.sum,
-            count: payload.count,
-            duration: payload.duration,
-            status: 'done',
-          })
-          workersRef.current.get(task.id)?.terminate()
-          workersRef.current.delete(task.id)
-        }
-        if (type === 'canceled') {
-          updateTask(task.id, { status: 'canceled' })
-          workersRef.current.get(task.id)?.terminate()
-          workersRef.current.delete(task.id)
-        }
-      })
-      worker.postMessage({
-        type: 'start',
-        payload: {
-          id: task.id,
-          start: task.start,
-          end: task.end,
+        const worker = new Worker(
+          new URL('../workers/computeWorker.js', import.meta.url),
+          { type: 'module' },
+        )
+        workersRef.current.set(task.id, worker)
+        worker.addEventListener('message', (event) => {
+          const { type, payload } = event.data || {}
+          if (payload?.id !== task.id) return
+          if (type === 'progress') {
+            updateTask(task.id, {
+              processed: payload.processed,
+              sum: payload.sum,
+              count: payload.count,
+              status: 'running',
+              current: task.start + payload.processed,
+            })
+          }
+          if (type === 'paused') {
+            updateTask(task.id, { status: 'paused' })
+            recordPause(activeJob, task)
+          }
+          if (type === 'resumed') {
+            updateTask(task.id, { status: 'running' })
+          }
+          if (type === 'done') {
+            updateTask(task.id, {
+              processed: task.total,
+              sum: payload.sum,
+              count: payload.count,
+              duration: payload.duration,
+              status: 'done',
+            })
+            workersRef.current.get(task.id)?.terminate()
+            workersRef.current.delete(task.id)
+          }
+          if (type === 'canceled') {
+            updateTask(task.id, { status: 'canceled' })
+            workersRef.current.get(task.id)?.terminate()
+            workersRef.current.delete(task.id)
+          }
+        })
+        worker.postMessage({
+          type: 'start',
+          payload: {
+            id: task.id,
+            start: task.start,
+            end: task.end,
             chunkSize: job.chunkSize,
-        },
+            resumeAt: job.paused?.[task.id]?.current,
+            resumeSum: job.paused?.[task.id]?.sum,
+            resumeCount: job.paused?.[task.id]?.count,
+            resumeProcessed: job.paused?.[task.id]?.processed,
+          },
+        })
       })
-    })
     },
-    [createRanges, stopWorkers, updateTask],
+    [computePoolSize, createRanges, stopWorkers, updateTask],
   )
 
   const enqueueJob = () => {
@@ -263,8 +337,13 @@ function Hooks() {
       workerCount,
       chunkSize,
       status: 'queued',
+      priority: workerPriority,
     }
-    setWorkerQueue((prev) => [...prev, job])
+    setWorkerQueue((prev) => {
+      const next = [...prev, job].sort((a, b) => b.priority - a.priority)
+      persistQueue(next, activeJob)
+      return next
+    })
     if (!activeJob && !isRunning) {
       startNextJob()
     }
@@ -275,12 +354,14 @@ function Hooks() {
     setWorkerQueue((prev) => {
       if (!prev.length) return prev
       const [job, ...rest] = prev
-      setActiveJob({ ...job, status: 'running' })
+      const nextJob = { ...job, status: 'running' }
+      setActiveJob(nextJob)
       lastNotifiedPercent.current = -1
       startWorkers(job)
+      persistQueue(rest, nextJob)
       return rest
     })
-  }, [activeJob, isRunning, startWorkers])
+  }, [activeJob, isRunning, persistQueue, startWorkers])
 
   const pauseWorkers = () => {
     workerTasks.forEach((task) => {
@@ -306,6 +387,7 @@ function Hooks() {
   const stopAll = () => {
     stopWorkers(true)
     setWorkerQueue([])
+    persistQueue([], null)
   }
 
   const emitProgressNotification = (percent) => {
@@ -348,9 +430,14 @@ function Hooks() {
       })
       setActiveJob(null)
       setWorkerTasks([])
+      persistQueue(workerQueue, null)
       startNextJob()
     }
-  }, [activeJob, startNextJob, workerTasks])
+  }, [activeJob, persistQueue, startNextJob, workerQueue, workerTasks])
+
+  useEffect(() => {
+    restoreQueue()
+  }, [restoreQueue])
 
   useEffect(() => () => stopWorkers(), [stopWorkers])
 
@@ -372,6 +459,12 @@ function Hooks() {
     // Demonstrates useCallback memoization.
     setMessage((prev) => prev + '!')
   }, [])
+
+  const memoizedUserCount = useMemo(
+    () => users.length,
+    // useMemo caches derived values to avoid recalculation.
+    [users.length],
+  )
 
   return (
     <DemoContext.Provider value={contextValue ? 'Enabled' : 'Disabled'}>
@@ -399,6 +492,9 @@ function Hooks() {
             <button className="secondary-button" onClick={stableCallback}>
               useCallback
             </button>
+            <div className="hook-meta">
+              Memoized count: {memoizedUserCount}
+            </div>
           </div>
           <div className="hook-card">
             <div className="hook-title">useEffect</div>
@@ -464,7 +560,7 @@ function Hooks() {
             pagination.
           </p>
           <div className="hooks-grid">
-            <div className="hook-card worker-card">
+            <div className="hook-card">
               <div className="hook-title">useCounter</div>
               <div className="hook-meta">
                 Count: {count} (double: {double})
@@ -481,7 +577,7 @@ function Hooks() {
                 </button>
               </div>
             </div>
-            <div className="hook-card worker-card">
+            <div className="hook-card">
               <div className="hook-title">useToggle</div>
               <div className="hook-meta">Switch is {isOn ? 'ON' : 'OFF'}</div>
               <button className="secondary-button" onClick={toggleSwitch}>
@@ -499,7 +595,7 @@ function Hooks() {
               />
               <div className="hook-meta">Debounced: {debouncedSearch}</div>
             </div>
-            <div className="hook-card">
+            <div className="hook-card worker-card">
               <div className="hook-title">useThrottle</div>
               <input
                 className="input"
@@ -562,6 +658,20 @@ function Hooks() {
               </div>
             </div>
             <div className="hook-card">
+              <div className="hook-title">Lazy image</div>
+              <div className="hook-meta">
+                Image source loads after mount to reduce initial payload.
+              </div>
+              {imageSrc ? (
+                <img
+                  className="lazy-image"
+                  src={imageSrc}
+                  alt="Forest"
+                  loading="lazy"
+                />
+              ) : null}
+            </div>
+            <div className="hook-card">
               <div className="hook-title">Web Worker (parallel)</div>
               <div className="hook-meta">
                 Parallel workers run chunked prime sums with progress updates.
@@ -577,6 +687,19 @@ function Hooks() {
                     value={workerLimit}
                     onChange={(event) =>
                       setWorkerLimit(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <label className="table-select">
+                  Priority
+                  <input
+                    className="input small-input"
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={workerPriority}
+                    onChange={(event) =>
+                      setWorkerPriority(Number(event.target.value))
                     }
                   />
                 </label>

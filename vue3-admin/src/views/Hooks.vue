@@ -1,7 +1,14 @@
 <script setup>
 defineOptions({ name: 'Hooks' })
 
-import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  watchEffect
+} from 'vue'
 import { formatNumber } from '@admin/shared'
 import { useAsync } from '../hooks/useAsync'
 import { useCounter } from '../hooks/useCounter'
@@ -51,6 +58,12 @@ const throttledSearch = useThrottle((value) => {
 
 const storageNote = useLocalStorage('vue3-admin-note', 'Remember to review.')
 
+const lazyImage = ref('https://picsum.photos/seed/admin/640/360')
+const imageLoaded = ref(false)
+const markLoaded = () => {
+  imageLoaded.value = true
+}
+
 const pointer = ref({ x: 0, y: 0 })
 useEventListener(window, 'mousemove', (event) => {
   // Store pointer position for demo.
@@ -78,15 +91,19 @@ const { start: startInterval, stop: stopInterval, running } = useInterval(() => 
 
 // Workspace dependency from packages/shared (monorepo linking).
 const sharedNumber = formatNumber(1234567)
+const largeList = Array.from({ length: 500 }, (_, index) => `Row ${index + 1}`)
 
 const workerLimit = ref(20000)
 const workerCount = ref(Math.min(4, navigator.hardwareConcurrency || 4))
 const chunkSize = ref(2000)
+const workerPriority = ref(3)
 const workerTasks = ref([])
 const workerQueue = ref([])
 const activeJob = ref(null)
 const workerPool = new Map()
 const lastNotifiedPercent = ref(-1)
+const queueKey = 'vue3-admin-worker-queue'
+const maxWorkers = Math.max(1, navigator.hardwareConcurrency || 4)
 
 const overallProgress = computed(() => {
   const totals = workerTasks.value.reduce(
@@ -148,16 +165,19 @@ const handleWorkerMessage = (event) => {
   const { type, payload } = event.data || {}
   const id = payload?.id
   if (!id) return
+  const task = workerTasks.value.find((item) => item.id === id)
   if (type === 'progress') {
     updateTask(id, {
       processed: payload.processed,
       sum: payload.sum,
       count: payload.count,
-      status: 'running'
+      status: 'running',
+      current: payload.processed ? task?.start + payload.processed : task?.start
     })
   }
   if (type === 'paused') {
     updateTask(id, { status: 'paused' })
+    recordPause(activeJob.value, task)
   }
   if (type === 'resumed') {
     updateTask(id, { status: 'running' })
@@ -180,9 +200,71 @@ const handleWorkerMessage = (event) => {
   }
 }
 
+const recordPause = (job, task) => {
+  if (!job) return
+  const payload = JSON.parse(localStorage.getItem(queueKey) || '{}')
+  payload.paused = payload.paused || {}
+  payload.paused[job.id] = payload.paused[job.id] || {}
+  payload.paused[job.id][task.id] = {
+    current: task.current,
+    sum: task.sum,
+    count: task.count,
+    processed: task.processed,
+    end: task.end
+  }
+  localStorage.setItem(queueKey, JSON.stringify(payload))
+}
+
+const computePoolSize = (job) => {
+  // Auto scale workers based on range size.
+  const workload = Math.max(1, job.limit - 1)
+  const recommended = Math.min(
+    job.workerCount,
+    Math.max(1, Math.ceil(workload / 5000))
+  )
+  return recommended
+}
+
+const persistQueue = () => {
+  const payload = JSON.parse(localStorage.getItem(queueKey) || '{}')
+  payload.queue = workerQueue.value
+  payload.activeJob = activeJob.value
+  localStorage.setItem(queueKey, JSON.stringify(payload))
+}
+
+const restoreQueue = () => {
+  const raw = localStorage.getItem(queueKey)
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    workerQueue.value = parsed.queue || []
+    const paused = parsed.paused || {}
+    if (Object.keys(paused).length) {
+      workerQueue.value = workerQueue.value.map((job) => ({
+        ...job,
+        paused: paused[job.id] || null
+      }))
+    }
+    if (parsed.activeJob) {
+      // Restore unfinished job back into queue after reload.
+      workerQueue.value.unshift({
+        ...parsed.activeJob,
+        paused: paused[parsed.activeJob.id] || null,
+        status: 'queued'
+      })
+    }
+  } catch (error) {
+    workerQueue.value = []
+  }
+}
+
 const startWorkers = (job) => {
   stopWorkers(false)
-  const ranges = createRanges(job)
+  const scaledJob = {
+    ...job,
+    workerCount: computePoolSize(job)
+  }
+  const ranges = createRanges(scaledJob)
   const tasks = ranges.map((range, index) => ({
     id: `${job.id}-${index}`,
     start: range.start,
@@ -208,7 +290,7 @@ const startWorkers = (job) => {
         id: task.id,
         start: task.start,
         end: task.end,
-        chunkSize: job.chunkSize
+        chunkSize: scaledJob.chunkSize
       }
     })
   })
@@ -229,11 +311,33 @@ const enqueueJob = () => {
     limit: workerLimit.value,
     workerCount: workerCount.value,
     chunkSize: chunkSize.value,
-    status: 'queued'
+    status: 'queued',
+    priority: workerPriority.value
   }
   workerQueue.value.push(job)
+  // Higher priority jobs move to the front of the queue.
+  workerQueue.value.sort((a, b) => b.priority - a.priority)
+  persistQueue()
   if (!activeJob.value && !isRunning.value) {
     startNextJob()
+  }
+}
+
+const resumePendingJob = () => {
+  if (!activeJob.value || isRunning.value) return
+  // Resume the last active job that was persisted before reload.
+  startNextJob()
+}
+
+// Legacy queue helpers replaced by persistQueue/loadQueue above.
+
+const autoScaleWorkers = () => {
+  if (!activeJob.value) return
+  const pending = workerQueue.value.length
+  const target = Math.min(8, Math.max(1, pending + 1))
+  if (target !== workerCount.value) {
+    // Auto-scale worker pool based on queue backlog.
+    workerCount.value = target
   }
 }
 
@@ -274,6 +378,7 @@ const cancelWorkers = () => {
 
 const clearQueue = () => {
   workerQueue.value = []
+  persistQueue()
 }
 
 const stopAll = () => {
@@ -288,6 +393,7 @@ const stopWorkers = (resetJob = true) => {
   if (resetJob) {
     activeJob.value = null
   }
+  persistQueue()
 }
 
 watch(
@@ -301,6 +407,18 @@ watch(
   }
 )
 
+watch(workerQueue, persistQueue, { deep: true })
+
+watch(
+  () => workerQueue.value.length,
+  () => {
+    autoScaleWorkers()
+  }
+)
+
+onMounted(() => {
+  restoreQueue()
+})
 watch(
   () => workerTasks.value.map((task) => task.status),
   () => {
@@ -493,6 +611,16 @@ onUnmounted(() => {
                 type="number"
                 min="500"
                 step="500"
+              />
+            </label>
+            <label class="table-select">
+              Priority
+              <input
+                v-model.number="workerPriority"
+                class="input small-input"
+                type="number"
+                min="1"
+                max="5"
               />
             </label>
           </div>

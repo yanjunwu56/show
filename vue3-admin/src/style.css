@@ -794,6 +794,12 @@ a {
   flex-wrap: wrap;
 }
 
+.lazy-image {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
 .worker-card {
   display: grid;
   gap: 12px;

@@ -324,6 +324,15 @@ a {
   grid-column: 1 / -1;
 }
 
+.lazy-image {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
 .tag {
   display: inline-flex;
   align-items: center;

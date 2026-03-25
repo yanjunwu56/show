@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import DataTable from '../components/DataTable.jsx'
 import { fetchUsers } from '../api'
 
 function Users() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [visibleCount, setVisibleCount] = useState(30)
   const columns = [
     { key: 'name', label: 'Name', sortable: true },
     { key: 'email', label: 'Email', sortable: true },
@@ -12,6 +13,10 @@ function Users() {
     { key: 'status', label: 'Status', sortable: true },
     { key: 'lastSeen', label: 'Last seen', sortable: true },
   ]
+  const displayedUsers = useMemo(
+    () => users.slice(0, visibleCount),
+    [users, visibleCount],
+  )
 
   useEffect(() => {
     let active = true
@@ -36,6 +41,17 @@ function Users() {
           <div className="card-subtitle">Search and manage access quickly</div>
         </div>
         <div className="filter-actions">
+          <label className="table-select">
+            Virtual rows
+            <input
+              className="input small-input"
+              type="number"
+              min="10"
+              max="200"
+              value={visibleCount}
+              onChange={(event) => setVisibleCount(Number(event.target.value))}
+            />
+          </label>
           <input className="input" type="text" placeholder="Search users" />
           <button className="ghost-button">Invite user</button>
         </div>
@@ -44,10 +60,10 @@ function Users() {
       <div className="card table-card">
         <p className="page-description">
           The table below supports pagination, sorting, filtering, and column
-          toggles.
+          toggles. The virtual rows slider limits rendered rows for performance.
         </p>
         {loading ? <div className="loading">Loading users...</div> : null}
-        {loading ? null : <DataTable rows={users} columns={columns} />}
+        {loading ? null : <DataTable rows={displayedUsers} columns={columns} />}
       </div>
     </section>
   )

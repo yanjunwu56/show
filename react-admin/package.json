@@ -13,6 +13,7 @@
     "format:check": "prettier --check .",
     "test": "vitest",
     "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test"
   },
   "lint-staged": {
@@ -34,6 +35,7 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^4.1.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -43,6 +45,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "vite": "^7.2.4",
-    "vitest": "^4.1.0"
+    "vite-plugin-compression": "^0.5.1",
+    "vitest": "^4.1.1"
   }
 }
